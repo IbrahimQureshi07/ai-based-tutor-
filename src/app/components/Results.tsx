@@ -1,0 +1,363 @@
+import { motion } from 'motion/react';
+import { useApp } from '@/app/context/ExamContext';
+import { Button } from '@/app/components/ui/button';
+import { Card } from '@/app/components/ui/card';
+import { Progress } from '@/app/components/ui/progress';
+import { 
+  Trophy, 
+  TrendingUp, 
+  Target, 
+  Award, 
+  ArrowRight,
+  BookOpen,
+  AlertCircle,
+  CheckCircle2,
+  Share2,
+  Unlock
+} from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import { useEffect, useState } from 'react';
+
+export function Results() {
+  const { userProgress, setCurrentScreen, answeredQuestions, addChatMessage, setChatOpen } = useApp();
+  const [hasCheckedUnlock, setHasCheckedUnlock] = useState(false);
+
+  // Check for auto-unlock on mount
+  useEffect(() => {
+    if (hasCheckedUnlock) return;
+    
+    const mockTestUnlocked = userProgress.examReadiness >= 80;
+    const finalExamUnlocked = userProgress.mockTestsCompleted >= 2 && userProgress.examReadiness >= 90;
+    
+    // Check if Mock Test just unlocked
+    if (mockTestUnlocked && userProgress.examReadiness >= 80 && userProgress.totalQuestions > 5) {
+      setTimeout(() => {
+        addChatMessage('ai', '🎉 Great job! You\'ve reached 80% readiness. Mock Test is now unlocked!');
+        setChatOpen(true);
+      }, 1000);
+    }
+    
+    // Check if Final Exam just unlocked
+    if (finalExamUnlocked && userProgress.mockTestsCompleted >= 2) {
+      setTimeout(() => {
+        addChatMessage('ai', '🏆 Outstanding! You\'re ready for the Final Exam. Stay focused and confident.');
+        setChatOpen(true);
+      }, 1000);
+    }
+    
+    setHasCheckedUnlock(true);
+  }, [userProgress.examReadiness, userProgress.mockTestsCompleted, hasCheckedUnlock]);
+
+  // Calculate category-wise performance
+  const categoryPerformance = new Map<string, { correct: number; total: number }>();
+  
+  answeredQuestions.forEach((answer, questionId) => {
+    // This is simplified - in a real app, you'd look up the question details
+    const category = 'General'; // Placeholder
+    const current = categoryPerformance.get(category) || { correct: 0, total: 0 };
+    categoryPerformance.set(category, {
+      correct: current.correct + (answer.correct ? 1 : 0),
+      total: current.total + 1
+    });
+  });
+
+  const pieData = [
+    { name: 'Correct', value: userProgress.correctAnswers, color: '#10B981' },
+    { name: 'Incorrect', value: userProgress.totalQuestions - userProgress.correctAnswers, color: '#EF4444' }
+  ];
+
+  const radarData = [
+    { subject: 'History', score: 75 + Math.random() * 20 },
+    { subject: 'Geography', score: 65 + Math.random() * 20 },
+    { subject: 'Science', score: 80 + Math.random() * 15 },
+    { subject: 'Math', score: 70 + Math.random() * 20 },
+    { subject: 'English', score: 85 + Math.random() * 10 },
+    { subject: 'Reasoning', score: 60 + Math.random() * 25 }
+  ];
+
+  const barData = [
+    { difficulty: 'Easy', correct: Math.floor(userProgress.correctAnswers * 0.5), total: Math.floor(userProgress.totalQuestions * 0.4) },
+    { difficulty: 'Medium', correct: Math.floor(userProgress.correctAnswers * 0.35), total: Math.floor(userProgress.totalQuestions * 0.4) },
+    { difficulty: 'Hard', correct: Math.floor(userProgress.correctAnswers * 0.15), total: Math.floor(userProgress.totalQuestions * 0.2) }
+  ];
+
+  const weakAreas = [
+    { subject: 'Indian History', accuracy: 55, status: 'needs-work' },
+    { subject: 'Chemistry', accuracy: 62, status: 'improving' },
+    { subject: 'Logical Reasoning', accuracy: 48, status: 'needs-work' }
+  ];
+
+  const getPerformanceMessage = () => {
+    if (userProgress.accuracy >= 90) return { title: 'Outstanding! 🎉', message: 'You\'re performing at an expert level!', color: 'text-success' };
+    if (userProgress.accuracy >= 75) return { title: 'Great Job! 👏', message: 'You\'re on the right track to success!', color: 'text-primary' };
+    if (userProgress.accuracy >= 60) return { title: 'Good Progress 💪', message: 'Keep practicing to improve further!', color: 'text-warning' };
+    return { title: 'Keep Going! 🚀', message: 'Every expert was once a beginner!', color: 'text-muted-foreground' };
+  };
+
+  const performance = getPerformanceMessage();
+
+  const getNextUnlock = () => {
+    if (userProgress.examReadiness >= 90 && userProgress.mockTestsCompleted >= 2) {
+      return { title: 'Final Exam', message: 'You can now take the final exam!' };
+    }
+    if (userProgress.examReadiness >= 80) {
+      return { title: 'Mock Test', message: 'You can now take mock tests!' };
+    }
+    return { title: 'Mock Test', message: `Reach ${80 - userProgress.examReadiness}% more readiness to unlock` };
+  };
+
+  const nextUnlock = getNextUnlock();
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
+      {/* Hero Section */}
+      <div className="bg-gradient-to-r from-primary via-purple-500 to-pink-500 text-white py-12">
+        <div className="container mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center"
+          >
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: 'spring', delay: 0.2 }}
+              className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-white/20 backdrop-blur-sm mb-6"
+            >
+              <Trophy className="w-12 h-12" />
+            </motion.div>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">
+              {performance.title}
+            </h1>
+            <p className="text-xl text-white/90 mb-6">{performance.message}</p>
+            <div className="flex items-center justify-center gap-8">
+              <div>
+                <div className="text-5xl font-bold">{userProgress.accuracy}%</div>
+                <div className="text-white/80">Accuracy</div>
+              </div>
+              <div className="w-px h-16 bg-white/30" />
+              <div>
+                <div className="text-5xl font-bold">{userProgress.totalQuestions}</div>
+                <div className="text-white/80">Questions</div>
+              </div>
+              <div className="w-px h-16 bg-white/30" />
+              <div>
+                <div className="text-5xl font-bold">{userProgress.level}</div>
+                <div className="text-white/80">Level</div>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-4 py-8 space-y-6">
+        {/* Performance Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Score Breakdown */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 }}
+          >
+            <Card className="p-6">
+              <h3 className="font-semibold mb-6 flex items-center gap-2">
+                <Target className="w-5 h-5 text-primary" />
+                Score Breakdown
+              </h3>
+              <div className="flex items-center justify-center mb-6">
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-success" />
+                    <span>Correct Answers</span>
+                  </div>
+                  <span className="font-semibold">{userProgress.correctAnswers}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-destructive" />
+                    <span>Incorrect Answers</span>
+                  </div>
+                  <span className="font-semibold">{userProgress.totalQuestions - userProgress.correctAnswers}</span>
+                </div>
+                <div className="pt-3 border-t border-border">
+                  <div className="flex items-center justify-between font-semibold">
+                    <span>Total Questions</span>
+                    <span>{userProgress.totalQuestions}</span>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+
+          {/* Difficulty Analysis */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.3 }}
+          >
+            <Card className="p-6">
+              <h3 className="font-semibold mb-6 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary" />
+                Difficulty Analysis
+              </h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <BarChart data={barData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis dataKey="difficulty" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Bar dataKey="correct" fill="#10B981" name="Correct" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="total" fill="#e5e7eb" name="Total" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </Card>
+          </motion.div>
+        </div>
+
+        {/* Subject Performance */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+        >
+          <Card className="p-6">
+            <h3 className="font-semibold mb-6 flex items-center gap-2">
+              <Award className="w-5 h-5 text-primary" />
+              Subject-wise Performance
+            </h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <RadarChart data={radarData}>
+                <PolarGrid stroke="#e5e7eb" />
+                <PolarAngleAxis dataKey="subject" />
+                <Radar name="Your Score" dataKey="score" stroke="#2563EB" fill="#2563EB" fillOpacity={0.6} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </Card>
+        </motion.div>
+
+        {/* Weak Areas */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
+          <Card className="p-6 border-destructive/30 bg-destructive/5">
+            <h3 className="font-semibold mb-4 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-destructive" />
+              Areas for Improvement
+            </h3>
+            <div className="space-y-4 mb-6">
+              {weakAreas.map((area, index) => (
+                <div key={index} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">{area.subject}</span>
+                    <span className="text-sm text-muted-foreground">{area.accuracy}%</span>
+                  </div>
+                  <Progress value={area.accuracy} className="h-2" />
+                </div>
+              ))}
+            </div>
+            <Button
+              onClick={() => setCurrentScreen('practice')}
+              variant="destructive"
+              className="w-full"
+            >
+              <BookOpen className="w-4 h-4 mr-2" />
+              Practice Weak Areas
+            </Button>
+          </Card>
+        </motion.div>
+
+        {/* Next Steps */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
+          <Card className="p-6 bg-gradient-to-r from-primary/10 to-purple-500/10 border-primary/30">
+            <h3 className="font-semibold mb-4">Next Unlock: {nextUnlock.title}</h3>
+            <p className="text-muted-foreground mb-6">{nextUnlock.message}</p>
+            <div className="flex flex-wrap gap-3">
+              <Button
+                onClick={() => setCurrentScreen('dashboard')}
+                className="gap-2"
+              >
+                Back to Dashboard
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+              <Button
+                onClick={() => setCurrentScreen('practice')}
+                variant="outline"
+                className="gap-2"
+              >
+                <BookOpen className="w-4 h-4" />
+                Continue Practice
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2"
+              >
+                <Share2 className="w-4 h-4" />
+                Share Results
+              </Button>
+            </div>
+          </Card>
+        </motion.div>
+
+        {/* Progress Indicators */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+          >
+            <Card className="p-6 text-center">
+              <div className="text-4xl font-bold text-primary mb-2">{userProgress.streak}</div>
+              <div className="text-sm text-muted-foreground">Day Streak 🔥</div>
+            </Card>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8 }}
+          >
+            <Card className="p-6 text-center">
+              <div className="text-4xl font-bold text-success mb-2">{userProgress.examReadiness}%</div>
+              <div className="text-sm text-muted-foreground">Exam Readiness</div>
+            </Card>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.9 }}
+          >
+            <Card className="p-6 text-center">
+              <div className="text-4xl font-bold text-warning mb-2">{userProgress.rank}</div>
+              <div className="text-sm text-muted-foreground">Current Rank</div>
+            </Card>
+          </motion.div>
+        </div>
+      </div>
+    </div>
+  );
+}
