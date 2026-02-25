@@ -52,7 +52,25 @@ async function callOpenAI(
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error?.message || 'Failed to get AI response');
+      const errorMessage = error.error?.message || 'Failed to get AI response';
+      
+      // Log detailed error for debugging
+      console.error('OpenAI API Error Details:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: error
+      });
+      
+      // Provide user-friendly error messages
+      if (response.status === 401) {
+        throw new Error('Invalid API key. Please check your VITE_OPENAI_API_KEY in .env file.');
+      } else if (response.status === 429) {
+        throw new Error('Rate limit exceeded or no credits. Please check your OpenAI account balance.');
+      } else if (response.status === 403) {
+        throw new Error('API key does not have permission. Please check your OpenAI API key settings.');
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();

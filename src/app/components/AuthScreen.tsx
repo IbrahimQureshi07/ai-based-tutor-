@@ -3,8 +3,50 @@ import { motion } from 'motion/react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { useApp } from '@/app/context/ExamContext';
-import { Eye, EyeOff, Mail, Lock, User, Chrome } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, Chrome, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
+import { toast } from 'sonner';
+
+// User interface for type safety
+interface StoredUser {
+  email: string;
+  password: string;
+  name: string;
+  createdAt: string;
+}
+
+// LocalStorage helper functions
+const getStoredUsers = (): StoredUser[] => {
+  try {
+    const users = localStorage.getItem('examai_users');
+    return users ? JSON.parse(users) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveUser = (user: StoredUser): void => {
+  const users = getStoredUsers();
+  users.push(user);
+  localStorage.setItem('examai_users', JSON.stringify(users));
+};
+
+const findUser = (email: string): StoredUser | undefined => {
+  const users = getStoredUsers();
+  return users.find(u => u.email.toLowerCase() === email.toLowerCase());
+};
+
+const validateEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+};
+
+const validatePassword = (password: string): { valid: boolean; message: string } => {
+  if (password.length < 6) {
+    return { valid: false, message: 'Password must be at least 6 characters' };
+  }
+  return { valid: true, message: '' };
+};
 
 export function AuthScreen() {
   const [isLogin, setIsLogin] = useState(true);
@@ -14,29 +56,135 @@ export function AuthScreen() {
   const [name, setName] = useState('');
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const { setIsAuthenticated, setCurrentScreen, setUserName } = useApp();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const userName = isLogin ? email.split('@')[0] : name;
-    setUserName(userName);
-    setIsAuthenticated(true);
-    setCurrentScreen('dashboard');
+    setError('');
+    setIsLoading(true);
+
+    // Simulate network delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Validate email
+    if (!validateEmail(email)) {
+      setError('Please enter a valid email address');
+      setIsLoading(false);
+      return;
+    }
+
+    // Validate password
+    const passwordCheck = validatePassword(password);
+    if (!passwordCheck.valid) {
+      setError(passwordCheck.message);
+      setIsLoading(false);
+      return;
+    }
+
+    if (isLogin) {
+      // LOGIN FLOW
+      const existingUser = findUser(email);
+      
+      if (!existingUser) {
+        setError('No account found with this email. Please sign up first.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (existingUser.password !== password) {
+        setError('Incorrect password. Please try again.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Login successful
+      setUserName(existingUser.name);
+      setIsAuthenticated(true);
+      setCurrentScreen('dashboard');
+      toast.success(`Welcome back, ${existingUser.name}!`);
+      
+    } else {
+      // SIGNUP FLOW
+      if (!name.trim()) {
+        setError('Please enter your name');
+        setIsLoading(false);
+        return;
+      }
+
+      const existingUser = findUser(email);
+      
+      if (existingUser) {
+        setError('An account with this email already exists. Please login instead.');
+        setIsLoading(false);
+        return;
+      }
+
+      // Create new user
+      const newUser: StoredUser = {
+        email: email.toLowerCase(),
+        password: password,
+        name: name.trim(),
+        createdAt: new Date().toISOString()
+      };
+
+      saveUser(newUser);
+      
+      // Auto login after signup
+      setUserName(newUser.name);
+      setIsAuthenticated(true);
+      setCurrentScreen('dashboard');
+      toast.success(`Account created successfully! Welcome, ${newUser.name}!`);
+    }
+
+    setIsLoading(false);
   };
 
   const handleGoogleLogin = () => {
-    setUserName('Demo User');
+    // For demo purposes - in production, integrate with Google OAuth
+    const demoUser: StoredUser = {
+      email: 'demo@google.com',
+      password: '',
+      name: 'Demo User',
+      createdAt: new Date().toISOString()
+    };
+    
+    setUserName(demoUser.name);
     setIsAuthenticated(true);
     setCurrentScreen('dashboard');
+    toast.success('Logged in with Google (Demo Mode)');
   };
 
   const handleForgotPassword = (e: React.FormEvent) => {
     e.preventDefault();
-    // Simulate password reset
-    setTimeout(() => {
-      setForgotPasswordOpen(false);
-      setResetEmail('');
-    }, 1000);
+    
+    if (!validateEmail(resetEmail)) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    const user = findUser(resetEmail);
+    
+    if (!user) {
+      toast.error('No account found with this email');
+      return;
+    }
+
+    // In a real app, this would send an email
+    // For LocalStorage, we'll just show the password (demo only)
+    toast.success(`Password reset link sent to ${resetEmail}`, {
+      description: 'Check your email for instructions'
+    });
+    
+    setForgotPasswordOpen(false);
+    setResetEmail('');
+  };
+
+  // Clear error when switching between login/signup
+  const handleTabSwitch = (login: boolean) => {
+    setIsLogin(login);
+    setError('');
   };
 
   return (
@@ -98,7 +246,7 @@ export function AuthScreen() {
           {/* Tabs */}
           <div className="flex gap-2 mb-6 p-1 bg-muted/50 rounded-xl">
             <button
-              onClick={() => setIsLogin(true)}
+              onClick={() => handleTabSwitch(true)}
               className={`flex-1 py-2 rounded-lg transition-all ${
                 isLogin
                   ? 'bg-primary text-primary-foreground shadow-lg'
@@ -108,7 +256,7 @@ export function AuthScreen() {
               Login
             </button>
             <button
-              onClick={() => setIsLogin(false)}
+              onClick={() => handleTabSwitch(false)}
               className={`flex-1 py-2 rounded-lg transition-all ${
                 !isLogin
                   ? 'bg-primary text-primary-foreground shadow-lg'
@@ -118,6 +266,18 @@ export function AuthScreen() {
               Sign Up
             </button>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/30 flex items-center gap-2"
+            >
+              <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0" />
+              <p className="text-sm text-destructive">{error}</p>
+            </motion.div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -186,9 +346,20 @@ export function AuthScreen() {
 
             <Button
               type="submit"
+              disabled={isLoading}
               className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground"
             >
-              {isLogin ? 'Login' : 'Create Account'}
+              {isLoading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  {isLogin ? 'Logging in...' : 'Creating account...'}
+                </span>
+              ) : (
+                isLogin ? 'Login' : 'Create Account'
+              )}
             </Button>
           </form>
 

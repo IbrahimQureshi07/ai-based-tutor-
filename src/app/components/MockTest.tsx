@@ -4,12 +4,13 @@ import { useApp } from '@/app/context/ExamContext';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
-import { mockQuestions } from '@/app/data/exam-data';
+import { useQuestions } from '@/app/hooks/useQuestions';
 import { Clock, Flag, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 
 export function MockTest() {
   const { setCurrentScreen, answerQuestion, updateProgress, userProgress, addChatMessage, setChatOpen } = useApp();
+  const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Map<number, number>>(new Map());
@@ -20,8 +21,39 @@ export function MockTest() {
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
 
-  const currentQuestion = mockQuestions[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / mockQuestions.length) * 100;
+  const currentQuestion = questions[currentQuestionIndex];
+  const progress = questions.length ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0;
+
+  if (questionsLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading questions...</p>
+        </div>
+      </div>
+    );
+  }
+  if (questionsError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="text-center max-w-md p-6">
+          <p className="text-destructive mb-4">{questionsError}</p>
+          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+        </div>
+      </div>
+    );
+  }
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="text-center max-w-md p-6">
+          <p className="text-muted-foreground mb-4">No questions available. Add questions in Supabase.</p>
+          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+        </div>
+      </div>
+    );
+  }
 
   // Show AI warning before starting
   useEffect(() => {
@@ -68,7 +100,7 @@ export function MockTest() {
   };
 
   const handleNext = () => {
-    if (currentQuestionIndex < mockQuestions.length - 1) {
+    if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
       setSelectedOption(answers.get(currentQuestionIndex + 1) ?? null);
     }
@@ -100,7 +132,7 @@ export function MockTest() {
     
     // Calculate results
     let correct = 0;
-    mockQuestions.forEach((question, index) => {
+    questions.forEach((question, index) => {
       const userAnswer = answers.get(index);
       if (userAnswer !== undefined) {
         const isCorrect = userAnswer === question.correctAnswer;
@@ -138,7 +170,7 @@ export function MockTest() {
   };
 
   const answeredCount = answers.size;
-  const unansweredCount = mockQuestions.length - answeredCount;
+  const unansweredCount = questions.length - answeredCount;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -150,7 +182,7 @@ export function MockTest() {
               <h2 className="font-semibold">Mock Test</h2>
               <div className="hidden md:flex items-center gap-2">
                 <div className="px-3 py-1 rounded-lg bg-muted text-sm">
-                  Question {currentQuestionIndex + 1}/{mockQuestions.length}
+                  Question {currentQuestionIndex + 1}/{questions.length}
                 </div>
                 <div className="px-3 py-1 rounded-lg bg-muted text-sm">
                   Answered: {answeredCount}
@@ -265,7 +297,7 @@ export function MockTest() {
                   </Button>
 
                   <div className="flex gap-2">
-                    {currentQuestionIndex === mockQuestions.length - 1 ? (
+                    {currentQuestionIndex === questions.length - 1 ? (
                       <Button
                         onClick={handleSubmit}
                         className="bg-success hover:bg-success/90"
@@ -285,7 +317,7 @@ export function MockTest() {
               <Card className="p-4">
                 <h3 className="font-semibold mb-3">Question Navigator</h3>
                 <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
-                  {mockQuestions.map((_, index) => (
+                  {questions.map((_, index) => (
                     <button
                       key={index}
                       onClick={() => {
@@ -332,7 +364,7 @@ export function MockTest() {
           <DialogHeader>
             <DialogTitle>Submit Mock Test?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to submit? You have answered {answeredCount} out of {mockQuestions.length} questions.
+              Are you sure you want to submit? You have answered {answeredCount} out of {questions.length} questions.
               {unansweredCount > 0 && ` ${unansweredCount} questions remain unanswered.`}
             </DialogDescription>
           </DialogHeader>

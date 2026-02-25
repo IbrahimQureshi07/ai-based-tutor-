@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '@/app/context/ExamContext';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
-import { mockQuestions, Question } from '@/app/data/exam-data';
+import { Question } from '@/app/data/exam-data';
+import { useQuestions } from '@/app/hooks/useQuestions';
 import {
   ArrowLeft,
   Lightbulb,
@@ -17,7 +18,8 @@ import {
 
 export function PracticeTest() {
   const { setCurrentScreen, answerQuestion, userProgress, updateProgress, setChatOpen, addChatMessage, addMistake } = useApp();
-  const [questionQueue, setQuestionQueue] = useState<Question[]>(() => [...mockQuestions]);
+  const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
+  const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
@@ -27,10 +29,58 @@ export function PracticeTest() {
   const [practiceScore, setPracticeScore] = useState({ correct: 0, total: 0 });
   const [wrongQuestionsCount, setWrongQuestionsCount] = useState<Map<string, number>>(new Map());
   const [isRetryQuestion, setIsRetryQuestion] = useState(false);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
+
+  useEffect(() => {
+    if (questions.length > 0 && questionQueue.length === 0) {
+      setQuestionQueue([...questions]);
+    }
+  }, [questions, questionQueue.length]);
 
   const currentQuestion = questionQueue[currentQuestionIndex];
-  const progress = ((currentQuestionIndex + 1) / questionQueue.length) * 100;
+  const progress = questionQueue.length ? ((currentQuestionIndex + 1) / questionQueue.length) * 100 : 0;
   const maxHints = 5;
+
+  if (questionsLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading questions...</p>
+        </div>
+      </div>
+    );
+  }
+  if (questionsError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="text-center max-w-md p-6">
+          <p className="text-destructive mb-4">{questionsError}</p>
+          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+        </div>
+      </div>
+    );
+  }
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="text-center max-w-md p-6">
+          <p className="text-muted-foreground mb-4">No questions available. Add questions in Supabase.</p>
+          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+        </div>
+      </div>
+    );
+  }
+  if (questionQueue.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="text-center">
+          <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+          <p className="text-muted-foreground">Preparing questions...</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleOptionSelect = (index: number) => {
     if (showResult) return;
@@ -80,15 +130,45 @@ export function PracticeTest() {
     }));
   };
 
-  const handleNext = () => {
-    // ADAPTIVE LEARNING: Don't allow moving forward if answer was wrong
-    // Student must answer correctly before proceeding
+  const handleNext = async () => {
+    // When answer was wrong: get a similar question from GPT and show it
     if (!isCorrect) {
-      // Reset the question to allow retry
-      setSelectedOption(null);
-      setShowResult(false);
-      setShowHint(false);
-      // Question stays the same - they must answer correctly
+      setLoadingSimilar(true);
+      try {
+        const { generateSimilarQuestion } = await import('@/app/services/aiService');
+        const similar = await generateSimilarQuestion(
+          currentQuestion.question,
+          currentQuestion.subject || currentQuestion.category,
+          currentQuestion.difficulty
+        );
+        const newQuestion: Question = {
+          id: `similar-${Date.now()}`,
+          question: similar.question,
+          options: similar.options,
+          correctAnswer: similar.correctAnswer,
+          explanation: similar.explanation,
+          whyWrong: {},
+          subject: similar.category,
+          category: similar.category,
+          difficulty: currentQuestion.difficulty,
+        };
+        const newQueue = [...questionQueue];
+        newQueue.splice(currentQuestionIndex + 1, 0, newQuestion);
+        setQuestionQueue(newQueue);
+        setCurrentQuestionIndex(currentQuestionIndex + 1);
+        setSelectedOption(null);
+        setShowResult(false);
+        setShowHint(false);
+        setIsRetryQuestion(true);
+        addChatMessage('ai', "Here's a similar question to practice. Try to get this one right! 📝");
+      } catch (err) {
+        // If GPT fails, just reset so they can try same question again
+        setSelectedOption(null);
+        setShowResult(false);
+        setShowHint(false);
+      } finally {
+        setLoadingSimilar(false);
+      }
       return;
     }
 
@@ -106,7 +186,7 @@ export function PracticeTest() {
       if (hasWrongQuestions) {
         // Add wrong questions back to queue
         const wrongQuestionIds = Array.from(wrongQuestionsCount.keys());
-        const questionsToRetry = mockQuestions.filter(q => wrongQuestionIds.includes(q.id));
+        const questionsToRetry = questions.filter(q => wrongQuestionIds.includes(q.id));
         
         if (questionsToRetry.length > 0) {
           setQuestionQueue([...questionQueue, ...questionsToRetry]);
@@ -159,12 +239,17 @@ export function PracticeTest() {
 
   const handleSimilarQuestion = () => {
     // Find a question from the same category
-    const similarQuestions = mockQuestions.filter(q => 
+const similarQuestions = questions.filter(q =>
       q.category === currentQuestion.category && q.id !== currentQuestion.id
     );
     if (similarQuestions.length > 0) {
       const randomIndex = Math.floor(Math.random() * similarQuestions.length);
-      const newIndex = mockQuestions.findIndex(q => q.id === similarQuestions[randomIndex].id);
+      const questionToShow = similarQuestions[randomIndex];
+      const idxInQueue = questionQueue.findIndex(q => q.id === questionToShow.id);
+      const newIndex = idxInQueue >= 0 ? idxInQueue : questionQueue.length;
+      if (idxInQueue < 0) {
+        setQuestionQueue([...questionQueue, questionToShow]);
+      }
       setCurrentQuestionIndex(newIndex);
       setSelectedOption(null);
       setShowResult(false);
@@ -344,7 +429,8 @@ export function PracticeTest() {
                         </p>
                         {!isCorrect && selectedOption !== null && (
                           <p className="text-sm">
-                            <strong>Why this is wrong:</strong> {currentQuestion.whyWrong[selectedOption]}
+                            <strong>Why this is wrong:</strong>{' '}
+                            {currentQuestion.whyWrong[selectedOption] || 'The correct answer is explained above. Review and try again!'}
                           </p>
                         )}
                       </div>
@@ -413,9 +499,14 @@ export function PracticeTest() {
                       <Button
                         onClick={handleNext}
                         className="gap-2"
-                        disabled={!isCorrect && isRetryQuestion}
+                        disabled={loadingSimilar}
                       >
-                        {!isCorrect ? (
+                        {loadingSimilar ? (
+                          <>
+                            <span className="animate-spin inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full mr-1" />
+                            Getting similar question...
+                          </>
+                        ) : !isCorrect ? (
                           'Try Again'
                         ) : currentQuestionIndex < questionQueue.length - 1 ? (
                           <>
