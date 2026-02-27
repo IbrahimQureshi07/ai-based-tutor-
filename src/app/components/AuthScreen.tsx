@@ -3,38 +3,10 @@ import { motion } from 'motion/react';
 import { Button } from '@/app/components/ui/button';
 import { Input } from '@/app/components/ui/input';
 import { useApp } from '@/app/context/ExamContext';
-import { Eye, EyeOff, Mail, Lock, User, Chrome, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Eye, EyeOff, Mail, Lock, User, Chrome, AlertCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/app/components/ui/dialog';
 import { toast } from 'sonner';
-
-// User interface for type safety
-interface StoredUser {
-  email: string;
-  password: string;
-  name: string;
-  createdAt: string;
-}
-
-// LocalStorage helper functions
-const getStoredUsers = (): StoredUser[] => {
-  try {
-    const users = localStorage.getItem('examai_users');
-    return users ? JSON.parse(users) : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveUser = (user: StoredUser): void => {
-  const users = getStoredUsers();
-  users.push(user);
-  localStorage.setItem('examai_users', JSON.stringify(users));
-};
-
-const findUser = (email: string): StoredUser | undefined => {
-  const users = getStoredUsers();
-  return users.find(u => u.email.toLowerCase() === email.toLowerCase());
-};
+import { supabase } from '@/app/services/supabase';
 
 const validateEmail = (email: string): boolean => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -65,17 +37,12 @@ export function AuthScreen() {
     setError('');
     setIsLoading(true);
 
-    // Simulate network delay for better UX
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    // Validate email
     if (!validateEmail(email)) {
       setError('Please enter a valid email address');
       setIsLoading(false);
       return;
     }
 
-    // Validate password
     const passwordCheck = validatePassword(password);
     if (!passwordCheck.valid) {
       setError(passwordCheck.message);
@@ -84,99 +51,68 @@ export function AuthScreen() {
     }
 
     if (isLogin) {
-      // LOGIN FLOW
-      const existingUser = findUser(email);
-      
-      if (!existingUser) {
-        setError('No account found with this email. Please sign up first.');
-        setIsLoading(false);
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      setIsLoading(false);
+      if (signInError) {
+        setError(signInError.message === 'Invalid login credentials' ? 'Invalid email or password.' : signInError.message);
         return;
       }
-
-      if (existingUser.password !== password) {
-        setError('Incorrect password. Please try again.');
-        setIsLoading(false);
-        return;
+      if (data.user) {
+        const displayName = data.user.user_metadata?.full_name || data.user.email || '';
+        setUserName(displayName);
+        setIsAuthenticated(true);
+        setCurrentScreen('dashboard');
+        toast.success(`Welcome back, ${displayName}!`);
       }
-
-      // Login successful
-      setUserName(existingUser.name);
-      setIsAuthenticated(true);
-      setCurrentScreen('dashboard');
-      toast.success(`Welcome back, ${existingUser.name}!`);
-      
     } else {
-      // SIGNUP FLOW
       if (!name.trim()) {
         setError('Please enter your name');
         setIsLoading(false);
         return;
       }
-
-      const existingUser = findUser(email);
-      
-      if (existingUser) {
-        setError('An account with this email already exists. Please login instead.');
-        setIsLoading(false);
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: { data: { full_name: name.trim() } }
+      });
+      setIsLoading(false);
+      if (signUpError) {
+        setError(signUpError.message);
         return;
       }
-
-      // Create new user
-      const newUser: StoredUser = {
-        email: email.toLowerCase(),
-        password: password,
-        name: name.trim(),
-        createdAt: new Date().toISOString()
-      };
-
-      saveUser(newUser);
-      
-      // Auto login after signup
-      setUserName(newUser.name);
-      setIsAuthenticated(true);
-      setCurrentScreen('dashboard');
-      toast.success(`Account created successfully! Welcome, ${newUser.name}!`);
+      if (data.session) {
+        setUserName(name.trim());
+        setIsAuthenticated(true);
+        setCurrentScreen('dashboard');
+        toast.success(`Account created! Welcome, ${name.trim()}!`);
+      } else {
+        toast.success('Check your email to confirm your account, then log in.');
+      }
     }
-
-    setIsLoading(false);
   };
 
   const handleGoogleLogin = () => {
-    // For demo purposes - in production, integrate with Google OAuth
-    const demoUser: StoredUser = {
-      email: 'demo@google.com',
-      password: '',
-      name: 'Demo User',
-      createdAt: new Date().toISOString()
-    };
-    
-    setUserName(demoUser.name);
+    // Demo only - unchanged
+    setUserName('Demo User');
     setIsAuthenticated(true);
     setCurrentScreen('dashboard');
     toast.success('Logged in with Google (Demo Mode)');
   };
 
-  const handleForgotPassword = (e: React.FormEvent) => {
+  const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!validateEmail(resetEmail)) {
       toast.error('Please enter a valid email address');
       return;
     }
-
-    const user = findUser(resetEmail);
-    
-    if (!user) {
-      toast.error('No account found with this email');
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.trim(), {
+      redirectTo: `${window.location.origin}/`
+    });
+    if (error) {
+      toast.error(error.message);
       return;
     }
-
-    // In a real app, this would send an email
-    // For LocalStorage, we'll just show the password (demo only)
-    toast.success(`Password reset link sent to ${resetEmail}`, {
-      description: 'Check your email for instructions'
-    });
-    
+    toast.success('Check your email for the password reset link.');
     setForgotPasswordOpen(false);
     setResetEmail('');
   };

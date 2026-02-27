@@ -1,0 +1,278 @@
+Question,A,B,C,D,Correct Answer,Feedback / Explanation
+"A broker was paid 6% commission on the first $60,000 of a sale price and 4% for everything above that. What would the sale price be if the total commission was $4,375?","$98,500","$60,000","$79,375","$19,375","C. $79,375","To solve this, first find the commission made by the broker (6% or .06) up to $60,000 and subtract that from the total commission ($4,375), then divide by the remaining commission percentage (4% or .04) to find the amount paid at that rate. Finally, add that number to $60,000 to get the total selling price.
+ 
+ .06 x $60,000 = $3,600
+ $4,375 - $3,600 = $775
+ $775 ÷ .04 = $19,375
+ $19,375 + $60,000 = $79,375
+ 
+ The total sale price was $79,375."
+"A property sells for $495,000, which represents a 10% profit for the owner. What was the original cost of the property?","$400,000","$550,000","$450,000","$405,000","C. $450,000","The selling price of a property is 100% of the original cost plus 10% of the original cost (the profit), so the selling price actually equals 110% of the original cost of the property. Convert 110% to decimal form, which is 1.10 (move the decimal 2 places to the left). Finally, divide the sales price by that number to get the answer:
+ 
+ $495,000 ÷ 1.10 = $450,000"
+"Calder's Construction Company built a home in a new subdivision. It sold 6 months later for $48,500. This amount reflected a depreciation of 3%. Knowing this, what was the original asking price on the home?","$51,500","$48,500","$53,000","$50,000","D. $50,000","To figure this out, take the sale price and divide it by 97% (or .97), which is the amount remaining after 3% depreciation:
+ $48,500 ÷ .97 = $50,000"
+"Joe's duplex has depreciated 3% per year for the 5 years he has owned it. Since the building originally cost $20,000, what is the current value of the duplex?","$17,000","$16,000","$15,000","$18,500","A. $17,000","To figure this out, first figure out the total depreciation:
+ 3% x 5 years = 15%
+ 
+ Next, multiply that by the original cost:
+ $20,000 x 15% = $3,000
+ 
+ Finally, subtract that amount from the original cost to find the current value:
+ $20,000 - $3,000 = $17,000
+ 
+ NOTE - Most appraisal and assessment methods use straight-line depreciation, which means it doesn't compound annually. That's why we use 3% x 5 years = 15% when determining the amount of depreciation."
+"If Skylar's property has a net income of $5,480, and returns 8 percent annually on the investment, then what is her property's value?","$68,000","$70,000","$72,500","$68,500","D. $68,500","The formula for finding a property's value when you have the net operating income and cap rate is:
+ 
+ Current Market Value (CMV) = Net Operating Income (NOI) ÷ Cap Rate
+ CMV = $5,480 ÷ .08 (8% in decimal form)
+ CMV = $68,500"
+"An individual borrowed $7,000 on a straight note at 9% interest. If the total interest paid on the note was $945, what was the term of the loan?",20 months,12 months,16 months,18 months,D. 18 months,"9% of $7,000 is $630 interest per year. $945 divided by $630 equals 1.5 years (1.5 years = 18 months)."
+"If the capitalization rate on a building that produces a $20,000 annual income is 10 percent, what is the estimated value of the building?","$200,000","$222,200","$220,000","$22,000","A. $200,000","Remember, the interest rate into the income equals the investment, so you can use this here in a slightly different equation. $20,000/.10 (the rate) = $200,000."
+"Bailey Broker leases a property to Susie Smiley for 5 years. Bailey will receive a 5% commission based on the annual rent. The rent for the property is $3000 per month for the first year, with a $100 increase to the monthly payment each succeeding year. Knowing this, what will Bailey's commission be for the full 5-year period?","$2,100","$4,800","$9,600","$16,000","C. $9,600","To solve this problem, you must figure out the monthly rent for each of the 5 years, multiply that by 12 to find total rent for the 5-year period, then add those together and multiply that sum by 5% to arrive at the commission.
+ 
+ $3,000 x 12 = $36,000
+ $3,100 x 12 = $37,200
+ $3,200 x 12 = $38,400
+ $3,300 x 12 = $39,600
+ $3,400 x 12 = $40,800
+ 
+ Add the annual rent for each year to get a total of $192,000 in rent.
+ Multiply $192,000 x 0.05 to get a commission of $9,600."
+"John and Sandi Samson, who file a joint income tax return, pay 28 percent income tax on their earnings. If they have an $85,000 mortgage at 8 percent interest, their allowable tax savings would be:","$1,904",$190.40,$680,"$6,800","A. $1,904","To solve this problem, first multiply the mortgage by the interest to arrive at the annual interest. ($85,000 x .08 = $6,800) Next, multiply this number by the tax bracket to arrive at the savings. $6,800 x 28% = $1,904."
+"A house is appraised for $25,000, and shows an assessed value of $20,000. The taxes on the house are $300 annually. What would the tax be on a house that is appraised at $45,000, with an assessed value of $40,000?",$600,$150,$300,$750,A. $600,"To solve this problem, first figure out the levy percentage by dividing the tax amount by the assessed value (of the first house), and then multiply that number by $40,000 (the value of the second house). So, $300/$20,000=.015 mill levy. Then $40,000 x .015 = $600."
+"What is the selling price of a property if the seller paid $3500 for taxes due, has a $125,000 mortgage, paid a 6% broker commission, and netted $70,000 on the sale?","$202,700.12","$210,410","$198,500","$211,170.21","D. $211,170.21","To arrive at this answer, start by adding the taxes, mortgage, and profit from the sale:
+ $3500 + $125,000 + $70,000 = $198,500
+ 
+ This number is equal to 94% of the selling price, with the broker's 6% commission equalling the rest (94% + 6% commission = 100% sales price). To find the full selling price, divide $198,500 by .94 (which is the same as 94%) to find the total:
+ $198,500 ÷ .94 = $211,170.21"
+"A building that cost $300,000 to construct 10 years ago has depreciated 25%. The land costs $51,000, so the appraised value is:","$265,000","$263,250","$300,000","$276,000","D. $276,000","$300,000 x 25% (depreciation) = $75,000. Then subtract that from $300,000 for a total of $225,000, and add $51,000 for a total appraised value of $276,000."
+"An office building earns $850,000 per year, and expenses are 35% of that amount. If the property is capitalized at 12%, what is its approximate value?","$5,243,167","$6,545,722","$4,506,789","$4,604,167","D. $4,604,167","To solve this, first find out the amount spent on expenses (remember that 35% can be expressed as .35):
+ $850,000 x .35 = $297,500
+ 
+ Now, subtract that amount from the total:
+ $850,000 - $297,500 = $552,500
+ 
+ To reach the final answer, divide the net revenue by the capitalization rate (remember that 12% can be expressed as .12):
+ $552,500 ÷ .12 = $4,604,167"
+"A house sold for $95,000 with a sales commission rate of 7.5%. The listing broker received 50% of the total commission and the selling broker received 50%. How much would the selling salesperson receive if the selling broker kept 60% and gave 40% to the salesperson?","$3,562","$7,125","$1,425","$2,137","C. $1,425","With total commissions of $7,125, the selling and listing broker each receive $3,562.50. At 40% of the selling broker's share ($3,562.50), the selling salesperson would receive $3,562.50 x .4 = $1,425.
+ 
+ Although the names sound similar, a selling agent is vastly different from a seller's agent. While a listing agent takes care of selling the property, a selling broker represents the interest of the buyer. This type of real estate agent learns about what buyers are looking for and then help match them with properties."
+"An owner of a six-family apartment complex pays the property manager an annual salary equal to 12% of the property's annual gross income. If the annual gross income is $ 140,000, the annual expenses are $65,000 and the capitalization rate is 10%, what is the property manager's annual salary?","$750,000","$16,800","$8,700","$7,500","B. $16,800","This question is full of red herrings. The only figures that count are the gross annual income of $140,000 and the property manager's salary of 12% of GAI, which yields annual compensation of $16,800."
+"What is the cubic footage of a driveway that measures 60 feet long, 8 feet wide, and is 3 inches deep?",120 cubic feet,160 cubic feet,90 cubic feet,480 cubic feet,A. 120 cubic feet,"To find out the total cubic footage, multiply the length, width and depth. Keep in mind that 3 inches is the same as 1/4 of a foot:
+ 60 ft. x 8 ft. x 1/4 ft. = 120 cubic feet
+ 
+ On a calculator, this looks like:
+ 60 x 8 ÷ 4 = 120 cubic feet"
+"If the assessed valuation of a property is $20,000, with a tax rate of $4.00 per $100, what is the annual tax?",$460,$200,$800,$660,C. $800,"Remember that the $4.00 per $100 means that the $20,000 must be divided by 100, giving a total of $200. That, multiplied by $4.00 gives the total tax of $800."
+$140 is 3.5% of what amount?,"$4,100","$4,440",$440,"$4,000","D. $4,000","Remember to always divide to find the value or rate, so in this case, $140/.035 = $4,000."
+"If Jamie's quarterly interest payments are $150 on a $12,000 loan, then what is her annual interest rate?",5%,7%,6%,6.50%,A. 5%,"To figure out a percentage, divide the interest by the investment. So, $150 x 4 (quarters a year) = $600, and $600/$12,000 = 5%"
+"If an investment valued at $350,000 returns 12 percent annually, then what is the amount of income produced by this investment?","$4,200","$39,200","$3,920","$42,000","D. $42,000","Remember, take the value multiplied by the return to equal the income. So, in this case: $350,000 x 12% = $42,000"
+"Madison Davidson negotiated for a $30,000 loan with $400 monthly payments and a 9 percent interest charge. What is her first month's interest payment?",$425,$450,$205,$225,D. $225,"First, multiply $30,000 by .09 (same as 9%) to find the total annual interest paid- $2,700. Divide $2,700 by 12 (number of months in a year) to get the interest payment of $225 for the first month."
+"If a home appraised for $93,000, and Mr. Nickel, the borrower, puts 20% down, what would his loan amount be?","$91,400","$74,500","$91,500","$74,400","D. $74,400","To arrive at the loan amount, take the $93,000 appraisal amount and multiply that by 80% (loan needed) for a total loan amount of $74,400."
+"Wayne Goodspeed falls in love with a house and buys it for 5% more than the appraised value. He secures a loan for $220,000, which represents the appraised value minus a 10% down payment. What was the purchase price, and how much did Wayne have to come up with in cash?","$256,666 / $36,666","$244,444 / $44,444","$256,666 / $44,444","$244,444 / $36,666","A. $256,666 / $36,666","The purchase price is $256,666. The total amount in cash Wayne needed to come up with is $36,666.
+ 
+ Step 1, find the appraised value - $220,000 divided by 90% = 244,444.44
+ Step 2, find the purchase price - $244,444.44 X 105% = $256,666.67
+ Step 3, find the down payment - $256,666.67 minus $220,000 = $36,666
+ 
+ While it's not recommended to pay more than the appraised value of a home, it can be done as long as the buyer doesn't mind coming up with extra cash."
+"Mr. Fixit wanted to remodel his business, so he got a loan of $4,300 at an annual interest rate of 6 percent. He paid this loan off in 8 months. Knowing this, what was the total amount of interest Mr. Fixit paid?",$172,$258,$358,$21.50,A. $172,"To figure this problem, first take the loan amount multiplied by the interest rate for the annual interest ($258). Then, divide this amount by 12 (as in months per year) to find out the interest paid per month. Multiply that total ($21.50) by 8 (months) for the total interest paid of $172."
+"How much less are the monthly payments on a $36,000 home than on a $40,000 home if a 75% loan is obtained at $8.70 per month per $1000 of value?",$8.70,$26.10,$28.90,$17.40,B. $26.10,"To arrive at this amount, start with the difference between the prices of the two homes, which is $4,000. Multiply that amount by 75%:
+ $4,000 x .75 = $3,000
+ 
+ Now, divide that by $1000:
+ $3,000 ÷ $1000 = 3
+ 
+ Finally, multiply that by $8.70 to get the final difference:
+ 3 x $8.70 = $26.10"
+"If Chris's house depreciated at the rate of 2.5% per year for 10 years and has a present value of $12,500, what was the original value of the house?","$17,000","$20,000","$18,346","$16,666","D. $16,666","To solve this problem, first multiply 2.5% by 10 (years) for the total depreciation of 25%. Subtract that from 100% for 75%. Then, take $12,500/.75 = $16,666, which was the home's original value."
+"What are the actual measurements of a property shown as 5-3/4 inches long and 4-1/2 inches wide, if the scale is 1/8 inch = 1 foot?",46' x 36',48' x 36',12' x 9',36' x 32',A. 46' x 36',"First, convert your scale to feet. If 1/8 in. = 1 foot, then 1 in. = 8 feet (multiply both sides of the equation by 8). Use this to solve the problem.
+ 
+ 8 x 5 3/4 is the same as 8 x 5.75 = 46
+ 8 x 4 1/2 is the same as 8 x 4.5 = 36
+ The area is 46' x 36'."
+Freddy Froghammer owns a lot measuring 80 ft. x 120 ft. The city puts in a new street on the front and the side of his house and assesses him 6 cents per square foot based on the area of this lot. His costs are:,$67.50,$675.00,$576.00,$57.60,C. $576.00,"To arrive at this answer, figure out the area first:
+ 120 x 80 = 9,600 sq. ft.
+ 
+ Then multiply that by the assessed amount (6 cents or $.06), and this is what you'll have:
+ 9,600 x $.06 = $576.00"
+"If the transfer taxes are payable at the rate of 55 cents per $500 or part thereof, what is the grantor's cost on a $49,750 sale?",$5.50,$55.00,$125.00,$235.00,B. $55.00,"When figuring transfer tax, you are generally required by the state to round up to the nearest $500.
+ 
+ Round $49,750 up to $50,000 and divide it by $1000. The transfer tax is $.55 per $500, but you can double it to $1.10 per $1000 because it's easier to work with:
+ 
+ $50,000 ÷ $1000 = 50
+ Now multiply that by $1.10, so:
+ 50 x $1.10 = $55.00
+ 
+ NOTE - This math problem uses a generic transfer tax amount, the transfer taxes in your state may be charged at a different rate."
+"Sydney Blackwell manages an office building with leases of $60,000 per year. Her management agreement is for 7 years, with fees as follows: 7% the first year; 5% the second and third year; and 3 % the remaining years. What will be Sydney's total management fee?","$17,400","$13,400","$10,000","$15,400","A. $17,400","To solve this problem, you have to figure out the commission for each year, as follows: 7% of $60,000 = $4,200; 5% of $60,000 = $3,000, and that multiplied by 2 years at that rate is $6,000; 3% of $60,000 = $1,800 x 4 (years at that rate) = $7,200. Add these totals to reach the total of $17,400."
+"Find the capitalization rate on a building that is worth $430,000, and rents for $1,500 a month.",5%,5.25%,4%,3%,C. 4%,"To solve this, find the yearly rent and divide by the cost of the building:
+ $1,500 x 12 = $18,000 in yearly rent.
+ $18,000 ÷ $430,000 = 4%
+ 
+ NOTE - The full answer is 4.186047% (.04186047), but when the answers provided are rounded to a whole number, you'll want to choose the ""most correct"" answer."
+The reciprocal of 8% is:,125,1250,0.125,12.5,D. 12.5,"In math, the reciprocal is the inverse of a number. This means that the product of a number and its reciprocal yields 1. So the reciprocal of 8/100 is 100/8.
+ 
+ 8% is equivalent to .08
+ .08 is equal to the fraction 8/100
+ The opposite of 8/100 is 100/8
+ 100 divided by 8 = 12.5"
+"Sage owned an income property with an adjusted cost basis of $150,000 and a fair market value of $200,000. He exchanged the property for another income property, which has a fair market value of $210,000. Both parties had no loans against them and no adjustment was made for the difference in value. For federal income tax purposes, the new property will have a basis for Sage of:","$200,000","$210,000","$100,000","$150,000","D. $150,000","In a tax deferred exchange transaction, the cost basis of the property transferred becomes the cost basis of the property which is acquired or received. Even though Sage's new property had a higher fair market value, no adjustment was made for the difference in value so the basis for the new property remained the same as the basis for the old property."
+"A small studio sold for $16,350, which was a 9% appreciation over the original cost of the studio. What was the original cost of the studio?","$16,000","$14,875.50","$15,000.00","$17,915.50","C. $15,000.00","This problem tells you that the original cost of the studio plus a 9% appreciation equals $16,350:
+ Cost (100%) + Appreciation (9%) = $16,350
+ 
+ So here's another way to look at it- the studio sold for 109% of its original cost:
+ 109% = $16,350
+ 
+ To find out 100% of this number, divide $16,350 by 1.09 (109%):
+ $16,350 ÷ 1.09 = $15,000"
+"A prospect is considering the purchase of an income property. The property's operating statement shows the deductions subtracted from a total gross income of $94,500. The deductions amount to 60% of the gross income. If the prospect wants a 12% return on the purchase price of any investment he makes, what should he pay for the property?","$720,000","$315,000","$196,000","$81,000","B. $315,000","To solve this problem, start with finding the net income. Expenses equal 60% of the gross income, so the net income is the other 40%. To find the net income, multiply the gross income by 0.4 (which is the same as 40%):
+ $94,500 x 0.4 = $37,800
+ 
+ Now, divide the net income ($37,800) by the desired return (12%) to determine the desired purchase price:
+ $37,800 ÷ 0.12 = $315,000"
+"After subtracting $140.00 escrow fees and 6% commission on gross sales price, a seller receives $13,584.00. What is the selling price?","$14,540","$14,440","$14,600","$12,770","C. $14,600","To find the answer, add the seller's net sales price ($13,584) to the subtracted escrow fees ($140), then divide that by .94 (100% - 6% for the commission), which is the percentage of gross sales the seller gets to keep.
+ $13,584 + $140 = $13,724
+ $13,724 ÷ .94 = $14,600
+ The selling price is $14,600."
+"An acre is to be divided into four equal lots. If the lots are parallel to each other, rectangular, and 200 feet long, the width of each lot would most nearly be:",225 feet,55 feet,100 feet,15 feet,B. 55 feet,"One acre = 43,560 square feet, divide this by 200 to find the total width of all 4 lots:
+ 43,560 sq. ft. ÷ 200 ft. = 217.8 ft.
+ Now divide the total width by number of lots to find the width of each lot:
+ 217.8 ft ÷ 4 = 54.45 ft, rounded to 55 ft. (the question asks ""would most nearly be"" and only provides one ""near"" answer of 55 feet)."
+"Pat purchased a brand new piece of income property for $180,000. The listed price was $220,000. Pat considered this a good deal on his part, since he only put $10,000 down and acquired a new first trust deed for the difference. The tax assessed value was indicated at $150,000. Pat's cost basis for income tax purposes would be:","$155,000","$215,000","$180,000","$200,000","C. $180,000","For income tax purposes, the cost basis is generally the actual purchase price of the property. Improvements are added to the cost basis, and depreciation subtracts from it. When a property owner sells a home, the sale price is compared to the property's cost basis to determine if the seller realized any ""capital gains"", or profit, from the sale that needs to be taxed."
+"A house sold for $345,000, which was 9% more than the cost of the house. The original cost of the house was most nearly:","$319,125","$316,514","$332,500","$304,500","B. $316,514","The Original Cost (OC) is Current Cost (CC) divided by Adjusted Cost Ratio (ACR).
+ The Current Cost is $345,000, the Adjusted Cost Ratio is 100% plus or minus the appreciation/depreciation of the house. Because the house is now worth 9% more than OC, the ACR is 109% (or 1.09).
+ OC = CC ÷ ACR, so OC = $345,000 ÷ 1.09
+ $345,000 ÷ 1.09 = $316,513.76, so the answer is ""most nearly"" $316,514."
+A rectangular parcel of land that measures 220' by 330' contains most nearly:,1 2/3 acres,2 acres,1 1/4 acres,1 3/5 acres,A. 1 2/3 acres,"Multiply both sides of the parcel to figure out square footage:
+ 220' x 330' = 72,600 square feet
+ Now figure out how many acres that is:
+ 1 acre is 43,560 sq. ft., so 72,600 ÷ 43,560 = 1.66 acres
+ Now we know it's an answer that starts with 1, but we need to figure out which fraction equals .66. Fractions equal the top number divided by the bottom number, so: 3 ÷ 5 = .6, 1 ÷ 4 = .25, and 2 ÷ 3 = .6666
+ The answer that fits ""most nearly"" is 1 2/3 acres."
+Andrew purchased a property at 20% less than the listed price and later sold the property for the original listed price. What was the percentage of profit?,40%,25%,23%,10%,B. 25%,"This problem can be figured using any list price, but let's assume that the property was listed at $10,000.
+ 20% of that list price is 0.2 x $10,000 = $2,000.
+ So the purchase price is $10,000 - $2,000 = $8,000.
+ Andrew sold the property for the original list price, so his profit is $10,000 - $8,000 = $2,000.
+ To find the percentage of profit, divide the profit by purchase price: $2,000 ÷ $8,000 = 0.25, or 25% profit.
+ 
+ NOTE - Percentages are ratios, which is why you don't need the list price to solve the problem. You can substitute any list price in this problem and still get the same answer."
+Stephen sold his house and took back a note for $4200 secured by a Second Deed of Trust. He promptly sold the note for $2730. This represents a discount of:,35%,24%,10%,5%,A. 35%,"To figure this problem, first we need the ""discount"" (or difference) between the amount of the note and the amount the note was sold for:
+ 
+ (original amount of note) - (net received from sale) = (amount of discount)
+ $4200 - $2730 = $1470
+ 
+ Now, divide the discount by the original note amount to find the rate of discount:
+ $1470 ÷ $4200 = .35, or 35%"
+"Selwyn was the owner of a straight note with an annual interest rate of 8.4%. In 5 years, he had received $5,460 in interest. What was the principal amount of the note?","$3,250","$1,092","$6,500","$13,000","D. $13,000","$5,460 divided by 5 years = $1,092 annual interest
+ $1,092 divided by .084 = $13,000 principal amount"
+"If $150 interest is paid in 8 months on a straight note loan of $2,500, what is the annual rate of interest?",9%,10%,12%,2%,A. 9%,"In 8 months, or 2/3 of a year, $150 interest was paid. Divide $150 by 2/3 to find the total paid in a year, so $150 ÷ (2/3) = $225 interest per year.
+ Divide interest per year by total loan amount to find the interest rate, so $225 ÷ $2500 = .09, or 9% APR."
+"Solly bought a home for $31,680 and now wishes to sell. He is informed that the cost of selling will amount to 12% of the selling price. He wants to sell at a high enough price that he doesn't take a loss. How much does the home need to appreciate in value to offset the selling costs?","$4,320","$5,400","$1,080","$2,160","A. $4,320","Solly wants his original home purchase price of $31,680 to be 88% of his desired sales price. Start by finding his desired sales price, which is the original purchase price divided by 88%:
+ $31,680 ÷ .88 = $36,000
+ 
+ Now, subtract Solly's original purchase price from his desired sales price to find out how much the house needs to appreciate in value:
+ $36,000 - $31,680 = $4,320
+ 
+ Alternately, you can multiply $36,000 by 12%, which is the portion of the overall sales price that must be appreciation in value:
+ $36,000 x .12 = $4,320"
+A building has interior dimensions of 26 feet by 30 feet. The walls are 6 inches thick on every side. How much square footage of land does it cover?,21 sq. ft.,192 sq. ft.,837 sq. ft.,"1,230 sq. ft.",C. 837 sq. ft.,"To find the total square footage of land covered by a building, you'll need to add the wall thickness from each end (6 inches) of the building to the internal dimension. When you measure the width, there are two walls; when you measure the length, there are two walls. Once you have the total length by the total width, multiply them together to find the square footage:
+ 
+ 26 ft. (internal dimension) + 6 in. (one wall) + 6 in. (the other wall) = 27 ft. on one side (remember that 6 in. + 6 in. = 1 ft.)
+ 30 ft. (internal dimension) + 6 in. (one wall) + 6 in. (the other wall) = 31 ft. on the other.
+ 31 ft. x 27 ft. = 837 sq ft.
+ 
+ NOTE - You must add the thickness of each wall (6 inches for each wall, 2 walls length-wise and 2 walls width-wise) to the interior dimensions to calculate the entire square footage of land covered by the building."
+"A homeowner sold his house for $23,000. This selling price represented a 15% profit over what he had originally paid for the house. What was the original price of the home?","$2,000","$30,000","$20,000","$25,000","C. $20,000","100% + 15% = 115%
+ $23,000 divided by 1.15 = $20,000"
+"If a man paid $50,000 for a business which gave him a 6% return on his money, how much did he make during the first year that he owned it?","$30,000","$33,000",$300,"$3,000","D. $3,000","$50,000 x 6% = $3,000"
+"An individual who receives $225 per month on a money market savings account that pays 7 1/2% per year, has invested which of the following amounts?","$36,000","$48,000","$41,000","$12,000","A. $36,000","$225 X 12 = $2700 per year
+ $2700 divided by 7.5% = $36,000"
+"A homeowner sold his house for $230,000. If the selling price represented a 15% profit over what he had originally paid for the house, the original price of the home was:","$200,000","$50,000","$100,000","$300,000","A. $200,000","selling price = cost (100%) + profit (15%) = 115% which is $230,000
+ $230,000 divided by 1.15 = $200,000"
+"Jones sold his home for $17,200. If this represents 9% more than what he paid for it, the cost of the home was most nearly:","$15,500","$15,800","$13,200","$14,000","B. $15,800","Selling price = cost + 9% or 109%
+ $17,200 divided by 1.09 = $15,779
+ Closest answer is $15,800"
+"The Noonan family sold their home and had to carry back a Second Trust Deed and note of $5310.00. If they sold the note for $3823 before any payments had been made on the note, the rate of discount amounted to:",28%,18%,15%,31%,A. 28%,"To figure this problem, first we need the ""discount"" (or difference) between the amount of the note and the amount the note was sold for:
+ 
+ (original amount of note) - (net received from sale) = (amount of discount)
+ $5310 - $3823 = $1487
+ 
+ Now, divide the discount by the original note amount to find the rate of discount:
+ $1487 ÷ $5310 = .28, or 28%"
+"A borrower signed a straight note for a term of eight months in the amount of $2500. If she paid $150 in interest on the loan, the interest rate was:",7%,5.70%,5%,9%,D. 9%,"$150 divided by 8 months = $18.75 per month
+ $18.75 X 12 = $225 per year (APR is Annual Percentage Rate, so you must figure the rate for 1 year)
+ $225 divided by $2500 = 9%"
+"An income property was appraised for $100,000 based on a 6% capitalization rate. If an investor used an 8% cap rate, the value of the property would be:","$60,000","$80,000","$75,000","$90,000","C. $75,000","First, multiply the appraisal value by the capitalization rate:
+ $100,000 X 6% = $6000 net income
+ 
+ Then, divide the net income by the alternate cap rate to find the alternate value:
+ $6000 divided by 8% = $75,000 value."
+"If a borrower pays $1,650 interest per quarter on a straight note of $60,000, the interest rate would be:",11.00%,12.00%,15.00%,9.00%,A. 11.0%,"$1,650 = interest for 3 months
+ $1,650 X 4 = $6,600 interest for one year
+ $6,600 divided by $60,000 = 0.11 or 11%
+ 
+ NOTE - 1 quarter of a year is equal to 3 months."
+"An investor purchased two lots and paid $18,000 for each one. Since each lot had a 60' frontage he was able to subdivide the combined parcels in three lots with equal front footage. If the three lots sold for $15,000 each, his rate of profit on his investment was:",40%,20%,25%,12%,C. 25%,"First, find the selling price of the three lots:
+ 3 lots X $15,000 each = $45,000 selling price.
+ 
+ Next, find the purchase price:
+ 2 lots X $18,000 each = $36,000 purchase price.
+ 
+ Now we find the difference between selling price and purchase price:
+ $45,000 selling price - $36,000 purchase price = $9000 profit.
+ 
+ Finally, we divide the profit by the purchase price to determine the rate of profit on the investment:
+ $9000 ÷ $36,000 = .25, or 25%"
+"A real estate professional who holds a fiduciary relationship with a principal and whose responsibilities include financial reporting, tenant selection, property maintenance, and safeguarding the investment for one or more owners is acting as",an inspector,an appraiser,a mortgagor,a property manager,d,A real estate broker who manages properties for one or more owners may belong to a property management firm devoted to full-time property management. The broker can be self-employed or be one of the several managers in a real estate firm
+The individual who manages a residential property on behalf of the owner and who lives on the property as his/her primary residence is known as,a resident manager,a mortgagee,an engineer,a lessee,a,"The term resident manager applies to an individual who lives on the property and may be employed by a real estate broker, a managing agent or an owner to manage a property on a part-time or full-time basis. The resident manager role only applies to residential properties"
+Net operating income is defined as,summarizing all income sources less fixed expenses,calculating revenue minus debt expenses,operating expenses subtracted from effective gross income,total rent income minus vacancy losses,c,"Net operating income is calculated when fixed or variable operating expenses are subtracted from the effective gross income. When debt service is subtracted, the result is cash flow"
+High vacancy issues are attributed to,proper management and positive ratings,"ineffective marketing, high rent, and poor tenant-retention efforts",low rents and desirable amenities,effective marketing and efficient tenant screening,b,"Property managers understand these factors as the causes of high or increased vacancy rates. Other factors include image and appearance problems, high market vacancy rates, and management quality"
+Which of the following statements is an example of corrective maintenance?,Repairing the heating system,Installing updated appliances,Replacing the air conditioner with an energy-efficient model,Installing a fence to increase privacy,a,"Corrective maintenance occurs when repairs and replacements are required to keep the property operational. They are not included or scheduled with any routine or preventative maintenance program, and do not consist of capital improvements such as new A/C systems"
+Property managers will employ which of the following strategies as part of their risk management plan,"Avoidance, transference, retention, or reduction","Discuss, review, retain, or study","Prepare, install, update, or remove","Improve, renovate, build, or insure",a,"The property manager and owner will employ one or several of these risk management strategies depending on the nature of the risk, the size of the potential loss, the likelihood of the occurrence, and costs"
+"The property owner will use this type of insurance coverage to safeguard against theft, vandalism, burglary, illness and accident, and machinery damage",Multi-peril,Surety,Casualty,Liability,c,"Many types of insurance allows the shifting of liability away from the owner. Casualty coverage applies for specific risks, such as theft, vandalism, burglary, illness and accident, and machinery damage"
+"To minimize losses resulting from an employee’s criminal activity, such as theft or negligence, the property owner will use this type of coverage",Workers’ compensation,"Consequential loss, use, and occupancy",Surety bond,Casualty,c,The surety bond covers the property owner should an employee engage in criminal or negligent activities during employment
+What type of agent is the property manager?,Appointed,Designated,General,Universal,c,"Property managers are general agents empowered to perform some or all operational duties, including the authority to enter into contracts"
+What type of lease did the tenant sign when a landlord is to receive a portion of the tenant’s business income?,A percentage lease,A periodic lease,A gross lease,A graduated lease,a,A percentage lease requires the tenant to pay the landlord a portion of the retail operation’s income or sales. This may be in addition to a base rental amount
+The lease used when the tenant agrees to pay a portion or all of the operating expenses is known as a,net lease,percentage lease,gross lease,graduated lease,a,"Under a net lease, the tenant pays rent plus some or all of the operating expenses attributable to the rented space. This arrangement is commonly used in office and industrial leases"
+What type of eviction occurs when the tenant vacates the leased premises due to the landlord’s negligence or if the property is deemed as unfit?,Constructive,Actual,Court,Unenforceable,a,"A constructive eviction occurs when a tenant vacates the leased premises and declares the lease void, claiming that landlord’s actions have made the premises unfit for the purpose described in the lease"
+The legislation known to address equitable remedies between the landlord and tenant when breaches occur is known as the,Residential Leasing Act,Uniform Residential Landlord-Tenant Act,Fair Housing Act,Sherman Antitrust Act,b,"The Uniform Residential Landlord-Tenant Act has been adopted to a greater or lesser extent in many states. The Act aims to clarify lease terms such as the rental amount, security deposits, landlord access, procedures for default and eviction, and general obligations of landlord and tenant"
+Which of the following occurs upon lease expiration and surrender of the premises?,Enjoyment,Exclusion,Reversion,Disposition,c,"When the lease term expires, the lessee has no further rights in the property and full ownership reverts to the lessor"
+"The rights to quiet enjoyment, habitability, and constructive eviction fall under the",landlord’s rights and responsibilities,tenant’s rights and responsibilities,property manager's rights and responsibilities,owner’s rights and responsibilities,b,"The tenant rights and responsibilities include quiet enjoyment, habitable conditions, constructive eviction, while agreeing to paying rent, obeying rules, providing property notice, returning property in prescribed conditions, and use the property for intended purposes"
+"The responsibilities to provide safe living conditions, proper heating and cooling, and operational plumbing fall under the",landlord rights and responsibilities,lessee rights and responsibilities,tenant rights and responsibilities,shared rights and responsibilities of both parties,a,"The landlord maintains the right to enter the premises, receive payments, repossess upon lease termination, and pursue default remedies. Landlord must also agree to provide habitable conditions, operational building systems, cleanliness, and safety"
+"The tenant continues to reside in the property without the landlord’s approval in an estate for years lease. By doing so, the tenant has created which of the following estates?",At sufferance,From period-to-period,At will,Holdover,a,A tenancy or an estate of sufferance occurs when a tenant stays on the property without the landlord’s approval after the expiration of the lease
+The general agency relationship between the owner and property manager is established when a contractual arrangement is created through which of the following?,Listing agreement,Compensation agreement,Management agreement,Sales agreement,c,"The management agreement establishes an agency agreement between manager and owner as well as specifying such essentials as the manager’s scope of authority, responsibilities, objective, compensation, and the term of the agreement"
+Which of the following statements is an example of preventative maintenance?,Daily vacuuming and dusting,Replacing a nonoperational air-conditioning unit,Seasonal service calls for the water heater,Repairing a broken elevator,c,"Preventative maintenance goes beyond the routine to address or deter situations that can become serious problems if ignored. Seasonal or scheduled replacement of appliances and equipment, regular painting of exterior and interior areas, and planned roof replacements are a few examples"
+"The tenant pays the landlord a fixed rental amount, and the landlord agrees to pay for all operating expenses, such as utilities, insurances, and other services. The lessee has signed a",gross lease,net lease,percentage lease,periodic lease,a,"In a gross lease, the tenant pays an established, fixed rent, and the landlord pays all property operations expenses, such as taxes, insurance, utilities, and other services. This is the arrangement commonly used in residential leases"
+Which type of maintenance is necessary for the day-to-day functioning of the property?,Preventive maintenance,Corrective maintenance,Capital upgrades,Routine maintenance,d,Routine maintenance activities are those necessary for the day-to-day functioning of the property. Regular performance of these activities helps to keep tenants satisfied as well as forestall serious problems requiring repair or correction
+Which type of maintenance becomes mandatory when repairs and replacements are required to keep the property operational?,Preventive maintenance,Corrective maintenance,General maintenance,Routine maintenance,b,"When routine and preventive maintenance fail, repairs and replacements become mandatory to keep the property operational. A boiler may develop a leak, an air-conditioning unit may break down, an elevator may cease to function properly"
+Alterations made specifically for certain new tenants are defined as,build-outs,trade fixtures,personalty,renovations,a,Alterations made specifically for certain tenants are called build-outs or tenant improvements
+"When debt service is subtracted from net operating income, the result is",potential gross income,effective gross income,net operating income,cash flow,d,"The total of scheduled rents plus revenues from such sources as vending services, storage charges, late fees, utilities, and contracts is the potential gross income. Subtracting losses caused by uncollected rents, vacancies and evictions gives effective gross income. Operating expenses are subtracted from this total to show net operating income. When debt service is subtracted, the result is cash flow"
+Which of the following must a manager consider when setting rents?,The tenant’s ability to pay,The neighborhood’s amenities,The prevailing rents of comparable properties,The cost of preventive maintenance,c,"Rental income must be sufficient to cover fixed expenses, operating expenses, and desired return on investment. But rental rates must also be realistic, taking into account what is happening in the market. The manager must consider prevailing rents in comparable properties as well as vacancy rates in the market and in the property. The manager must make a detailed survey of competitive space"
+Which of the following statements is true regarding the Equal Credit Opportunity Act (ECOA)?,The ECOA prohibits discrimination in lending and does not apply to property managers,The ECOA applies to how property managers evaluate tenants,The ECOA encourages the use of different rental forms for different applicants,The ECOA encourages managers to use different credit requirements for minorities,b,"The Equal Credit Opportunity Act, which prohibits discrimination in lending, applies to how property managers evaluate potential tenants. The manager must be consistent in evaluating the creditworthiness of applicants. The same application forms and the same credit requirements should be used with all applicants"
+A multi-peril insurance policy may allow special coverage for,bankruptcy,errors and omissions,environmental hazards,terrorism,d,"The owner may opt for a multi-peril policy which combines standard types of commercial policies and may allow special coverage for floods, earthquakes, and terrorism"
+A leasehold estate may include all of the following forms of occupancy EXCEPT,tenancy for years,joint tenancy,period-to-period,sufferance,b,"A leasehold estate may grant tenancy for years, from period-to-period, at will, and at sufferance. Joint tenancy is a form of freehold estate, not leasehold"
+"Trade fixtures, generally speaking, belong to the",building,landlord,tenant,property manager,c,"Trade fixtures generally belong to the tenant and can be removed when the tenant leaves. Some state laws, however, may dictate that certain trade fixtures once installed are real property"
+"Like the grantor of a life estate, the grantor of a leasehold estate",retains a future interest in the estate,cannot terminate the agreement until death,conveys the full bundle of rights to the lessee,conveys a future interest to the lessee,a,"Like the grantor of a life estate, the grantor of a leasehold estate retains a future interest in the estate. The lease grants a number of rights to the property, including, primarily, the rights to enter, possess, and use the property for the term of the lease. The lessee does not enjoy the full bundle of rights to the property"
+A default occurs when _____________________ violates any of the terms or covenants of the lease,either the tenant or landlord,the tenant,the landlord,the property manager,a,"A default occurs when either the tenant or landlord violates any of the terms or covenants of the lease. The damaged party may sue for damages, specific performance (of the breached obligation), or cancellation of the lease"
+The lease and/or the law may specify that a landlord may enter the tenant's property under which of the following conditions?,To perform a routine security inspection,To review the tenant’s thermostat levels,To collect the rent,To perform a needed repair,d,"Commonly, the landlord retains a right of entry into the premises in order to perform needed repairs and maintenance on a property. The lease and/or the law may specify that a landlord may enter the tenant's property only under one or more of the following conditions: An emergency requires the landlord to enter, The tenant gives consent to enter, The landlord enters during normal business hours and only after giving notice to either make repairs or to show the property to prospective tenants, purchasers or contractors, The tenant has abandoned or surrendered the property, The landlord has a court order allowing the entry"
+A periodic leasehold or tenancy at will may be terminated by proper notice given by which of the parties?,The tenant,The landlord,The tenant or the landlord,Neither party may terminate a tenancy at will,c,A periodic leasehold or tenancy at will may be terminated by proper notice given by either party – the landlord or the tenant
+"Excluding a life estate or tenancy at will, which of the following actions does not terminate a lease obligation?",Foreclosure,Eminent domain,Landlord’s death,Condemnation,c,"A tenancy at will terminates on the death of either party. The landlord's death terminates any lease if the landlord held the leased property under a life estate, since the landlord cannot convey an interest that extends beyond the landlord's life"
+The landlord’s rights and responsibilities include all the following EXCEPT,the right of quiet enjoyment,use only for intended purposes,provide habitable conditions,give proper notice,a,"The landlord maintains the right to enter the premises, receive payments, retake on termination, and pursue remedies for tenant’s default"
+The landlord is expected to maintain a habitable property for tenants. This means that the landlord at the very least must,dispose of the garbage and waste found in the rental unit,keep the rental unit clean and sanitary,cover the heating cost of the unit,provide pest control,d,"The landlord (by way of the property manager), is expected to deliver a habitable property. This means that the land lord at the very least must: keep the heating, cooling, electrical, and plumbing systems in good working condition, keep floors, stairways and railings safe and in good repair, provide pest control as needed, repair roof leaks and broken windows promptly"
+The management agreement creates a fiduciary relationship between which of the following parties?,The lessor to the lessee,The property manager to the lessee,The property manager to the owner,The owner to the property manager,c,"The management agreement establishes an agency agreement between manager and owner as well as specifying such essentials as the manager's scope of authority. The agency relationship creates the fiduciary duties of obedience, care, loyalty, accounting, and disclosure owed to the owner by the property manager"
+An owner's insurance policies typically do not cover,personal items owned by the tenant,workers’ compensation,consequential loss,property coverage for building contents,a,The owner's policies do not cover what is owned by the tenant. Tenants should obtain their own renter's or tenant's insurance to cover personal belongings
+A court may hold a manager and owner responsible for which of the following?,The dangerous and criminal activity in the neighborhood,The physical safety of the tenants in the leased premises,The physical safety of the tenants in the community,The tenant’s personal stolen items,b,"A court may hold a manager and owner responsible for the physical safety of employees, tenants, and customers in leased premises"
+Which of the following actions is not a risk management strategy?,Closing off a dangerous area of the building,Installing a fire alarm in the building,Buying an insurance policy,Installing an elevator in a 4-story building,d,"Risk management strategies include the following: avoidance-removing the source of the risk, such as by closing off a dangerous area of the building, reduction-taking action to forestall the event before it happens, such as by installing fire alarms, sprinklers, and security systems, transference-shifting the risk to someone else by buying an insurance policy, retention-taking the chance that the event is not likely enough to occur to justify the expense of one of the other strategies; self-insurance"
+Holly just bought a farm that consists of exactly 1/2 of a section. How many acres is this farm?,"1,280 acres",640 acres,320 acres,160 acres,c,640 acres of a section divided by 2 = 320 acres
+"You are a salesperson with Performance Programs Brokerage and you just sold your first property for $800,000. The commission is 6% and co-brokerage split is 50-50. You negotiated a 65%-35% agent-broker split rate. How much will you receive as a commission?","$48,000","$24,000","$20,500","$15,600",d,"$800,000 x 6% = a total commission of $48,000 for all parties. Your brokerage gets 50% which is $24,000. You get 65% of the $24,000 which is $15,600."
+"A property is listed for $415,000 and receives an offer for $435,000. How much is the offer as a percent of the listing price (rounded to the nearest percent)?",105%,103%,97%,95%,a,"$435,000 / $415,000 = 104.82% Round up to 105% of listing price"
+"Phillip wishes to value his new investment property utilizing a GRM (gross rent multiplier). The property grosses $3,500 in monthly rent and typical GRMs in the area are 140. What is valuation based on this data?","$350,000","$490,000","$140,000","$588,000",b,"$3,500 x a GRM of 140 = $490,000"
+"Devan decided to proceed with a $600,000 interest-only loan that has monthly interest payments of $3,250 (annual total of $39,000). What is the interest rate of this interest-only loan?",5.50%,6.50%,7.25%,4.75%,b,"$39,000 is the annual interest total. Divide that by the total interest only loan to discover the interest rate. $39,000 / $600,000 = 6.5%"
+"Comparable A on a CMA has one more bedroom and one more bath than the subject. However, it has 400 SF less living area. If the comp sold for $1,000,000 and bedrooms are valued at $50,000, the baths @ $25,000, and living area @ $30,000, what is the indicated value of the subject?","$1,045,000","$995,000","$985,000","$955,000",d,"Adjust the comparable. $1,000,000 - $50,000 (for bedroom) - $25,000 (for bathroom) + $30,000 (for square feet surplus) = $955,000 value for the subject."
+"A borrower pays $12,000 for points on a $400,000 loan. How many points was she charged by the lender for points?",4.8 points,9 points,3 points,40 points,c,"$12,000 / $400,000 = .03 = 3 points"
+"A borrower must have a 80%-20% LTV ratio on his financing package to avoid a higher interest rate. If the borrower has $400,000 cash, how much house can he buy without incurring a higher interest rate?","$1,600,000","$1,800,000","$1,500,000","$2,000,000",d,"$400,000 is divided by .2 to calculate a 80-20 LTV. $400,000 / .2 = $2,000,000"
+"An apartment building has an NOI of $400,000, current-year reserve expenses of $40,000, interest expense of $260,000, and annual depreciation of $100,000. What is this property's tax liability for the year if the tax bracket is 28%?","$39,200","$28,000","$22,400","$112,000",c,"To calculate tax liability we first need taxable income. That is found via NOI + reserves - interest expense - depreciation. So that is $400,000 + $40,000 - $260,000 - $100,000 = a taxable income of $80,000. $80,000 X 28% = $22,400"
+"The current mill rate on a property totals 17 mills. The taxable value of a property is $500,000. What is the tax on this property?","$8,500",$850,"$1,700","$34,000",a,"17 mills = 1.7% of the property's value. $500,000 X .017 = $8,500"
+"A homeowner sells her property on February 1. Annual taxes on the property are $1,800. What is the buyer's credit for the tax bill? Assume the seller owns the day of closing, and use the 365-day method","$1,640 buyer credit","$1,640 seller debit",$158 debit to the buyer,$158 credit to buyer,d,"Property taxes are paid in arrears meaning the buyer will receive a credit for the first 32 days of the year. $1,800 / 365 = $4.93 per day. $4.93 x 32 = $157.76 rounded up to $158 as a credit to the buyer."

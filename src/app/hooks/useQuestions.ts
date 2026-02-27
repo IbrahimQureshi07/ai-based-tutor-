@@ -2,29 +2,35 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/app/services/supabase';
 import type { Question } from '@/app/data/exam-data';
 
+// New table: Question, A, B, C, D, Correct Answer, Feedback / Explanation
 interface SupabaseQuestionRow {
   id: string;
-  question: string;
-  option_a: string;
-  option_b: string;
-  option_c: string;
-  option_d: string;
-  correct_option: number;
-  subject: string | null;
-  topic: string | null;
-  explanation: string | null;
+  Question: string;
+  A: string;
+  B: string;
+  C: string;
+  D: string;
+  'Correct Answer': string;
+  'Feedback / Explanation': string | null;
+}
+
+function parseCorrectAnswerIndex(val: string | null | undefined): number {
+  if (!val || typeof val !== 'string') return 0;
+  const letter = val.trim().charAt(0).toUpperCase();
+  const map: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+  return map[letter] ?? 0;
 }
 
 function mapRowToQuestion(row: SupabaseQuestionRow): Question {
   return {
     id: row.id,
-    question: row.question,
-    options: [row.option_a, row.option_b, row.option_c, row.option_d],
-    correctAnswer: (row.correct_option || 1) - 1,
-    explanation: row.explanation || '',
+    question: row.Question,
+    options: [row.A, row.B, row.C, row.D],
+    correctAnswer: parseCorrectAnswerIndex(row['Correct Answer']),
+    explanation: row['Feedback / Explanation'] || '',
     whyWrong: {},
-    subject: row.subject || 'General',
-    category: row.subject || row.topic || 'General',
+    subject: 'General',
+    category: 'General',
     difficulty: 'medium',
   };
 }
@@ -43,7 +49,7 @@ export function useQuestions() {
         setError(null);
         const { data, error: fetchError } = await supabase
           .from('questions')
-          .select('id, question, option_a, option_b, option_c, option_d, correct_option, subject, topic, explanation')
+          .select('id, "Question", "A", "B", "C", "D", "Correct Answer", "Feedback / Explanation"')
           .order('created_at', { ascending: true });
 
         if (cancelled) return;

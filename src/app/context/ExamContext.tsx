@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { UserProgress, initialUserProgress, Question } from '@/app/data/exam-data';
+import { supabase } from '@/app/services/supabase';
 
 interface AppContextType {
   userProgress: UserProgress;
@@ -38,6 +39,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  // Restore Supabase session on load and listen for auth changes
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        const name = session.user.user_metadata?.full_name || session.user.email || '';
+        setUserName(name);
+        setIsAuthenticated(true);
+        setCurrentScreen('dashboard');
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const name = session.user.user_metadata?.full_name || session.user.email || '';
+        setUserName(name);
+        setIsAuthenticated(true);
+        setCurrentScreen('dashboard');
+      } else {
+        setUserName('');
+        setIsAuthenticated(false);
+        setCurrentScreen('auth');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const updateProgress = (updates: Partial<UserProgress>) => {
     setUserProgress(prev => {

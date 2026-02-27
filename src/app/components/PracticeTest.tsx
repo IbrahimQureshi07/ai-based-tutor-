@@ -30,6 +30,8 @@ export function PracticeTest() {
   const [wrongQuestionsCount, setWrongQuestionsCount] = useState<Map<string, number>>(new Map());
   const [isRetryQuestion, setIsRetryQuestion] = useState(false);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
+  // Tracks the original sheet question that was answered wrong so GPT always generates based on it
+  const [originalWrongQuestion, setOriginalWrongQuestion] = useState<Question | null>(null);
 
   useEffect(() => {
     if (questions.length > 0 && questionQueue.length === 0) {
@@ -97,22 +99,22 @@ export function PracticeTest() {
 
     if (!correct) {
       addMistake(currentQuestion, selectedOption);
-      
-      // Track wrong attempts
-      const wrongCount = wrongQuestionsCount.get(currentQuestion.id) || 0;
-      setWrongQuestionsCount(new Map(wrongQuestionsCount).set(currentQuestion.id, wrongCount + 1));
-      
-      // Add this question back to the queue if not already there
-      // This ensures the student must answer it correctly before moving on
+
+      // Only track wrong count for real sheet questions, not GPT-generated ones
+      const isGptQuestion = currentQuestion.id.startsWith('similar-');
+      if (!isGptQuestion) {
+        const wrongCount = wrongQuestionsCount.get(currentQuestion.id) || 0;
+        setWrongQuestionsCount(new Map(wrongQuestionsCount).set(currentQuestion.id, wrongCount + 1));
+      }
+
       setIsRetryQuestion(true);
-      
-      // Show encouraging message
-      addChatMessage('ai', `Don't worry! I'll help you understand this better. Let's try this question again until you get it right! 💪`);
+      addChatMessage('ai', `Don't worry! I'm generating a similar question to help you practise this concept. 💪`);
     } else {
-      // If correct and it was a retry, remove from wrong count
       if (isRetryQuestion) {
         const newWrongCount = new Map(wrongQuestionsCount);
-        newWrongCount.delete(currentQuestion.id);
+        // Remove original sheet question from retry list if it was tracked
+        const src = originalWrongQuestion || currentQuestion;
+        newWrongCount.delete(src.id);
         setWrongQuestionsCount(newWrongCount);
         setIsRetryQuestion(false);
       }
@@ -131,15 +133,19 @@ export function PracticeTest() {
   };
 
   const handleNext = async () => {
-    // When answer was wrong: get a similar question from GPT and show it
     if (!isCorrect) {
+      const sourceForGpt = originalWrongQuestion || currentQuestion;
+      if (!originalWrongQuestion) {
+        setOriginalWrongQuestion(currentQuestion);
+      }
+
       setLoadingSimilar(true);
       try {
         const { generateSimilarQuestion } = await import('@/app/services/aiService');
         const similar = await generateSimilarQuestion(
-          currentQuestion.question,
-          currentQuestion.subject || currentQuestion.category,
-          currentQuestion.difficulty
+          sourceForGpt.question,
+          sourceForGpt.subject || sourceForGpt.category,
+          sourceForGpt.difficulty
         );
         const newQuestion: Question = {
           id: `similar-${Date.now()}`,
@@ -150,29 +156,46 @@ export function PracticeTest() {
           whyWrong: {},
           subject: similar.category,
           category: similar.category,
-          difficulty: currentQuestion.difficulty,
+          difficulty: sourceForGpt.difficulty,
         };
         const newQueue = [...questionQueue];
-        newQueue.splice(currentQuestionIndex + 1, 0, newQuestion);
+        newQueue[currentQuestionIndex] = newQuestion;
         setQuestionQueue(newQueue);
-        setCurrentQuestionIndex(currentQuestionIndex + 1);
         setSelectedOption(null);
         setShowResult(false);
         setShowHint(false);
         setIsRetryQuestion(true);
-        addChatMessage('ai', "Here's a similar question to practice. Try to get this one right! 📝");
-      } catch (err) {
-        // If GPT fails, just reset so they can try same question again
-        setSelectedOption(null);
-        setShowResult(false);
-        setShowHint(false);
+        addChatMessage('ai', '🤖 AI generated a similar question. Answer this correctly to move forward!');
+      } catch {
+        // GPT failed — show a different question from bank so the same question never repeats
+        const sameCategory = questions.filter(
+          (q) => (q.category === sourceForGpt.category || q.subject === sourceForGpt.subject) && q.id !== currentQuestion.id
+        );
+        if (sameCategory.length > 0) {
+          const fallbackQuestion = sameCategory[Math.floor(Math.random() * sameCategory.length)];
+          const newQueue = [...questionQueue];
+          newQueue[currentQuestionIndex] = fallbackQuestion;
+          setQuestionQueue(newQueue);
+          setSelectedOption(null);
+          setShowResult(false);
+          setShowHint(false);
+          setIsRetryQuestion(true);
+          addChatMessage('ai', "Couldn't reach AI right now — here's a related question from the bank. Answer correctly to move on! 📚");
+        } else {
+          setSelectedOption(null);
+          setShowResult(false);
+          setShowHint(false);
+          addChatMessage('ai', "Couldn't generate a new question. Click Try Again to retry, or ask the AI Tutor for help.");
+        }
       } finally {
         setLoadingSimilar(false);
       }
       return;
     }
 
-    // If correct, move to next question
+    // Correct answer → clear the GPT retry chain and advance to next real question
+    setOriginalWrongQuestion(null);
+
     if (currentQuestionIndex < questionQueue.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
       setSelectedOption(null);
@@ -180,27 +203,6 @@ export function PracticeTest() {
       setShowHint(false);
       setIsRetryQuestion(false);
     } else {
-      // Check if there are any wrong questions that need to be retried
-      const hasWrongQuestions = wrongQuestionsCount.size > 0;
-      
-      if (hasWrongQuestions) {
-        // Add wrong questions back to queue
-        const wrongQuestionIds = Array.from(wrongQuestionsCount.keys());
-        const questionsToRetry = questions.filter(q => wrongQuestionIds.includes(q.id));
-        
-        if (questionsToRetry.length > 0) {
-          setQuestionQueue([...questionQueue, ...questionsToRetry]);
-          setCurrentQuestionIndex(currentQuestionIndex + 1);
-          setSelectedOption(null);
-          setShowResult(false);
-          setShowHint(false);
-          setIsRetryQuestion(true);
-          addChatMessage('ai', `Great progress! Now let's review the questions you got wrong. You need to answer them correctly to complete the practice! 📚`);
-          return;
-        }
-      }
-      
-      // All questions answered correctly, show results
       setCurrentScreen('results');
     }
   };

@@ -129,44 +129,40 @@ export async function generateQuestion(params: QuestionGenerationParams): Promis
   explanation: string;
   category: string;
 }> {
-  const prompt = `Generate a ${params.difficulty || 'medium'} difficulty multiple choice question${params.subject ? ` about ${params.subject}` : ''}${params.topic ? ` on the topic: ${params.topic}` : ''}${params.similarTo ? ` similar to this question: "${params.similarTo}"` : ''}.
+  const similarPart = params.similarTo
+    ? `Generate a NEW question that is SIMILAR in topic and difficulty to this one (do not copy it): "${params.similarTo}". `
+    : '';
+  const prompt = `${similarPart}Generate a ${params.difficulty || 'medium'} difficulty multiple choice question${params.subject ? ` about ${params.subject}` : ''}${params.topic ? ` on the topic: ${params.topic}` : ''}.
 
 Requirements:
-- The question should be suitable for state-level exam preparation
-- Provide 4 options (A, B, C, D)
-- Clearly indicate which option is correct
-- Include a brief explanation
-- Format your response as JSON:
-{
-  "question": "the question text",
-  "options": ["option A", "option B", "option C", "option D"],
-  "correctAnswer": 0 (0-3 index),
-  "explanation": "why this answer is correct",
-  "category": "subject category"
-}`;
+- 4 options only (A, B, C, D). correctAnswer is 0 for A, 1 for B, 2 for C, 3 for D.
+- Reply with ONLY this JSON, no other text:
+{"question":"...","options":["...","...","...","..."],"correctAnswer":0,"explanation":"...","category":"..."}`;
 
   const messages: ChatMessage[] = [
     {
       role: 'system',
-      content: 'You are an expert question generator for educational exams. Always respond with valid JSON only.',
+      content: 'You are an exam question generator. Reply with ONLY valid JSON. No markdown, no code blocks, no extra text.',
     },
     { role: 'user', content: prompt },
   ];
 
-  const response = await callOpenAI(messages, 0.8, 500);
+  const response = await callOpenAI(messages, 0.8, 600);
   
   try {
-    // Extract JSON from response (sometimes GPT adds extra text)
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     const jsonStr = jsonMatch ? jsonMatch[0] : response;
     const parsed = JSON.parse(jsonStr);
-    
+    const opts = Array.isArray(parsed.options) ? parsed.options : [];
+    const options = opts.length >= 4 ? opts.slice(0, 4) : [...opts, ...Array(4 - opts.length).fill('Option')];
+    let correctAnswer = Number(parsed.correctAnswer);
+    if (!Number.isInteger(correctAnswer) || correctAnswer < 0 || correctAnswer > 3) correctAnswer = 0;
     return {
-      question: parsed.question,
-      options: parsed.options,
-      correctAnswer: parsed.correctAnswer,
-      explanation: parsed.explanation,
-      category: parsed.category || params.subject || 'General',
+      question: String(parsed.question || '').trim() || 'No question generated.',
+      options,
+      correctAnswer,
+      explanation: String(parsed.explanation || '').trim() || 'See correct answer above.',
+      category: String(parsed.category || params.subject || 'General').trim(),
     };
   } catch (error) {
     console.error('Failed to parse generated question:', error);

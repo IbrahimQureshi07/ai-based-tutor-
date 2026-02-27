@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import { useApp } from '@/app/context/ExamContext';
+import { supabase } from '@/app/services/supabase';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
@@ -26,7 +27,7 @@ import { aiSuggestions } from '@/app/data/exam-data';
 import { useState, useEffect } from 'react';
 
 export function Dashboard() {
-  const { userProgress, setCurrentScreen, userName, theme, toggleTheme, setIsAuthenticated, mistakesList } = useApp();
+  const { userProgress, setCurrentScreen, userName, theme, toggleTheme, setUserName, mistakesList } = useApp();
   const [focusMode, setFocusMode] = useState(false);
   const [showMockUnlock, setShowMockUnlock] = useState(false);
   const [showFinalUnlock, setShowFinalUnlock] = useState(false);
@@ -127,9 +128,9 @@ export function Dashboard() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => {
-                  setIsAuthenticated(false);
-                  setCurrentScreen('auth');
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  setUserName('');
                 }}
                 className="rounded-full"
               >
