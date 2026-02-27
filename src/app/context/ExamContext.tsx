@@ -21,6 +21,12 @@ interface AppContextType {
   addChatMessage: (role: 'user' | 'ai', content: string) => void;
   mistakesList: Array<{ question: Question; userAnswer: number; count: number }>;
   addMistake: (question: Question, userAnswer: number) => void;
+  /** Current-test mistakes only: used for "Review Mistakes" → practice only these questions */
+  reviewMistakesQuestions: Question[] | null;
+  setReviewMistakesQuestions: (q: Question[] | null) => void;
+  /** When true, PracticeTest builds queue from DB wrong questions + GPT (AI Assessment flow) */
+  startPracticeWithWeakAreas: boolean;
+  setStartPracticeWithWeakAreas: (v: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -35,6 +41,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'ai'; content: string; timestamp: Date }>>([]);
   const [mistakesList, setMistakesList] = useState<Array<{ question: Question; userAnswer: number; count: number }>>([]);
+  const [reviewMistakesQuestions, setReviewMistakesQuestions] = useState<Question[] | null>(null);
+  const [startPracticeWithWeakAreas, setStartPracticeWithWeakAreas] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -150,7 +158,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         chatMessages,
         addChatMessage,
         mistakesList,
-        addMistake
+        addMistake,
+        reviewMistakesQuestions,
+        setReviewMistakesQuestions,
+        startPracticeWithWeakAreas,
+        setStartPracticeWithWeakAreas,
       }}
     >
       {children}

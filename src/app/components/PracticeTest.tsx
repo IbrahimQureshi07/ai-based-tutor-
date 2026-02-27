@@ -6,6 +6,8 @@ import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
 import { Question } from '@/app/data/exam-data';
 import { useQuestions } from '@/app/hooks/useQuestions';
+import { getCurrentUserId, saveWrongQuestion, getUserWrongQuestions } from '@/app/services/userWrongQuestions';
+import { generateSimilarQuestion } from '@/app/services/aiService';
 import {
   ArrowLeft,
   Lightbulb,
@@ -17,7 +19,19 @@ import {
 } from 'lucide-react';
 
 export function PracticeTest() {
-  const { setCurrentScreen, answerQuestion, userProgress, updateProgress, setChatOpen, addChatMessage, addMistake } = useApp();
+  const {
+    setCurrentScreen,
+    answerQuestion,
+    userProgress,
+    updateProgress,
+    setChatOpen,
+    addChatMessage,
+    addMistake,
+    reviewMistakesQuestions,
+    setReviewMistakesQuestions,
+    startPracticeWithWeakAreas,
+    setStartPracticeWithWeakAreas,
+  } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -30,14 +44,66 @@ export function PracticeTest() {
   const [wrongQuestionsCount, setWrongQuestionsCount] = useState<Map<string, number>>(new Map());
   const [isRetryQuestion, setIsRetryQuestion] = useState(false);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
-  // Tracks the original sheet question that was answered wrong so GPT always generates based on it
   const [originalWrongQuestion, setOriginalWrongQuestion] = useState<Question | null>(null);
+  const [buildingWeakQueue, setBuildingWeakQueue] = useState(false);
 
   useEffect(() => {
-    if (questions.length > 0 && questionQueue.length === 0) {
+    if (reviewMistakesQuestions && reviewMistakesQuestions.length > 0) {
+      setQuestionQueue([...reviewMistakesQuestions]);
+      setReviewMistakesQuestions(null);
+      setCurrentQuestionIndex(0);
+      return;
+    }
+    if (questionQueue.length > 0 && !startPracticeWithWeakAreas) return;
+    if (startPracticeWithWeakAreas && questions.length > 0) {
+      setBuildingWeakQueue(true);
+      (async () => {
+        const userId = await getCurrentUserId();
+        setStartPracticeWithWeakAreas(false);
+        if (!userId) {
+          setQuestionQueue([...questions]);
+          setBuildingWeakQueue(false);
+          return;
+        }
+        const wrongRows = await getUserWrongQuestions(userId);
+        const wrongIds = new Set(wrongRows.map((r) => r.question_id));
+        let weakQuestions = questions.filter((q) => wrongIds.has(q.id));
+        if (weakQuestions.length === 0) {
+          setQuestionQueue([...questions]);
+        } else {
+          try {
+            const first = weakQuestions[0];
+            const similar = await generateSimilarQuestion(
+              first.question,
+              first.subject || first.category,
+              first.difficulty
+            );
+            const gptQuestion: Question = {
+              id: `similar-${Date.now()}`,
+              question: similar.question,
+              options: similar.options,
+              correctAnswer: similar.correctAnswer,
+              explanation: similar.explanation,
+              whyWrong: {},
+              subject: similar.category,
+              category: similar.category,
+              difficulty: first.difficulty,
+            };
+            weakQuestions = [...weakQuestions, gptQuestion];
+          } catch {
+            // keep weak only
+          }
+          setQuestionQueue([...weakQuestions]);
+        }
+        setCurrentQuestionIndex(0);
+        setBuildingWeakQueue(false);
+      })();
+      return;
+    }
+    if (questions.length > 0 && questionQueue.length === 0 && !buildingWeakQueue) {
       setQuestionQueue([...questions]);
     }
-  }, [questions, questionQueue.length]);
+  }, [questions, questionQueue.length, reviewMistakesQuestions, startPracticeWithWeakAreas]);
 
   const currentQuestion = questionQueue[currentQuestionIndex];
   const progress = questionQueue.length ? ((currentQuestionIndex + 1) / questionQueue.length) * 100 : 0;
@@ -78,7 +144,9 @@ export function PracticeTest() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-muted-foreground">Preparing questions...</p>
+          <p className="text-muted-foreground">
+            {buildingWeakQueue ? 'Loading your weak-area questions...' : 'Preparing questions...'}
+          </p>
         </div>
       </div>
     );
@@ -100,11 +168,13 @@ export function PracticeTest() {
     if (!correct) {
       addMistake(currentQuestion, selectedOption);
 
-      // Only track wrong count for real sheet questions, not GPT-generated ones
       const isGptQuestion = currentQuestion.id.startsWith('similar-');
       if (!isGptQuestion) {
         const wrongCount = wrongQuestionsCount.get(currentQuestion.id) || 0;
         setWrongQuestionsCount(new Map(wrongQuestionsCount).set(currentQuestion.id, wrongCount + 1));
+        getCurrentUserId().then((userId) => {
+          if (userId) saveWrongQuestion(userId, currentQuestion.id, currentQuestion.category || 'General');
+        });
       }
 
       setIsRetryQuestion(true);

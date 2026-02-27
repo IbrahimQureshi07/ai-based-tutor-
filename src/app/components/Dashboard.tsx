@@ -27,7 +27,17 @@ import { aiSuggestions } from '@/app/data/exam-data';
 import { useState, useEffect } from 'react';
 
 export function Dashboard() {
-  const { userProgress, setCurrentScreen, userName, theme, toggleTheme, setUserName, mistakesList } = useApp();
+  const {
+    userProgress,
+    setCurrentScreen,
+    userName,
+    theme,
+    toggleTheme,
+    setUserName,
+    mistakesList,
+    setReviewMistakesQuestions,
+    setStartPracticeWithWeakAreas,
+  } = useApp();
   const [focusMode, setFocusMode] = useState(false);
   const [showMockUnlock, setShowMockUnlock] = useState(false);
   const [showFinalUnlock, setShowFinalUnlock] = useState(false);
@@ -265,6 +275,7 @@ export function Dashboard() {
                     if (!userProgress.completedAssessment) {
                       setCurrentScreen('assessment');
                     } else {
+                      setStartPracticeWithWeakAreas(true);
                       setCurrentScreen('practice');
                     }
                   }}
@@ -502,7 +513,10 @@ export function Dashboard() {
                   </div>
                   <Button
                     variant="destructive"
-                    onClick={() => setCurrentScreen('practice')}
+                    onClick={() => {
+                      setReviewMistakesQuestions(mistakesList.map((m) => m.question));
+                      setCurrentScreen('practice');
+                    }}
                   >
                     Review Mistakes
                   </Button>
