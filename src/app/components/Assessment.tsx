@@ -1,6 +1,6 @@
 import { PracticeTest } from './PracticeTest';
 
-// Assessment is basically the same as practice test but marks completion
+// Assessment = 10 questions from GPT based on user's weak areas (DB), not from sheet
 export function Assessment() {
-  return <PracticeTest />;
+  return <PracticeTest questionLimit={10} assessmentMode />;
 }

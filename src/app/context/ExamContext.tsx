@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { UserProgress, initialUserProgress, Question } from '@/app/data/exam-data';
 import { supabase } from '@/app/services/supabase';
+import { loadPracticeState } from '@/app/services/practiceStateStorage';
 
 interface AppContextType {
   userProgress: UserProgress;
@@ -27,6 +28,9 @@ interface AppContextType {
   /** When true, PracticeTest builds queue from DB wrong questions + GPT (AI Assessment flow) */
   startPracticeWithWeakAreas: boolean;
   setStartPracticeWithWeakAreas: (v: boolean) => void;
+  /** Restored from sessionStorage so user can continue test after reload/tab switch */
+  restoredPracticeState: { questionIds: string[]; currentIndex: number } | null;
+  setRestoredPracticeState: (v: { questionIds: string[]; currentIndex: number } | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -43,6 +47,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [mistakesList, setMistakesList] = useState<Array<{ question: Question; userAnswer: number; count: number }>>([]);
   const [reviewMistakesQuestions, setReviewMistakesQuestions] = useState<Question[] | null>(null);
   const [startPracticeWithWeakAreas, setStartPracticeWithWeakAreas] = useState(false);
+  const [restoredPracticeState, setRestoredPracticeState] = useState<{ questionIds: string[]; currentIndex: number } | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -55,7 +60,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const name = session.user.user_metadata?.full_name || session.user.email || '';
         setUserName(name);
         setIsAuthenticated(true);
-        setCurrentScreen('dashboard');
+        const saved = loadPracticeState();
+        if (saved && saved.questionIds.length > 0) {
+          setRestoredPracticeState({ questionIds: saved.questionIds, currentIndex: saved.currentIndex });
+          setCurrentScreen('practice');
+        } else {
+          setCurrentScreen('dashboard');
+        }
       }
     });
 
@@ -64,7 +75,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const name = session.user.user_metadata?.full_name || session.user.email || '';
         setUserName(name);
         setIsAuthenticated(true);
-        setCurrentScreen('dashboard');
+        const saved = loadPracticeState();
+        if (saved && saved.questionIds.length > 0) {
+          setRestoredPracticeState({ questionIds: saved.questionIds, currentIndex: saved.currentIndex });
+          setCurrentScreen('practice');
+        } else {
+          setCurrentScreen('dashboard');
+        }
       } else {
         setUserName('');
         setIsAuthenticated(false);
@@ -163,6 +180,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setReviewMistakesQuestions,
         startPracticeWithWeakAreas,
         setStartPracticeWithWeakAreas,
+        restoredPracticeState,
+        setRestoredPracticeState,
       }}
     >
       {children}

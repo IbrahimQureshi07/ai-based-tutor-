@@ -39,7 +39,7 @@ function AppContent() {
       case 'assessment':
         return <Assessment />;
       case 'practice':
-        return <PracticeTest />;
+        return <PracticeTest questionLimit={3} />;
       case 'mock':
         return <MockTest />;
       case 'final':

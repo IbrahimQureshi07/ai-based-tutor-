@@ -7,7 +7,8 @@ import { Progress } from '@/app/components/ui/progress';
 import { Question } from '@/app/data/exam-data';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { getCurrentUserId, saveWrongQuestion, getUserWrongQuestions } from '@/app/services/userWrongQuestions';
-import { generateSimilarQuestion } from '@/app/services/aiService';
+import { generateSimilarQuestion, generateQuestion } from '@/app/services/aiService';
+import { savePracticeState, clearPracticeState } from '@/app/services/practiceStateStorage';
 import {
   ArrowLeft,
   Lightbulb,
@@ -18,7 +19,14 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-export function PracticeTest() {
+interface PracticeTestProps {
+  /** When set (e.g. from Assessment), only this many questions are shown. */
+  questionLimit?: number;
+  /** Assessment = 10 questions from GPT based on user weak areas (DB), not from sheet */
+  assessmentMode?: boolean;
+}
+
+export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProps = {}) {
   const {
     setCurrentScreen,
     answerQuestion,
@@ -31,6 +39,8 @@ export function PracticeTest() {
     setReviewMistakesQuestions,
     startPracticeWithWeakAreas,
     setStartPracticeWithWeakAreas,
+    restoredPracticeState,
+    setRestoredPracticeState,
   } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
@@ -46,8 +56,19 @@ export function PracticeTest() {
   const [loadingSimilar, setLoadingSimilar] = useState(false);
   const [originalWrongQuestion, setOriginalWrongQuestion] = useState<Question | null>(null);
   const [buildingWeakQueue, setBuildingWeakQueue] = useState(false);
+  const [buildingAssessmentQueue, setBuildingAssessmentQueue] = useState(false);
 
   useEffect(() => {
+    if (restoredPracticeState && questions.length > 0) {
+      const ordered = restoredPracticeState.questionIds
+        .map((id) => questions.find((q) => q.id === id))
+        .filter((q): q is Question => q != null);
+      const queue = ordered.length > 0 ? ordered : [...questions];
+      setQuestionQueue(queue);
+      setCurrentQuestionIndex(Math.min(restoredPracticeState.currentIndex, Math.max(0, queue.length - 1)));
+      setRestoredPracticeState(null);
+      return;
+    }
     if (reviewMistakesQuestions && reviewMistakesQuestions.length > 0) {
       setQuestionQueue([...reviewMistakesQuestions]);
       setReviewMistakesQuestions(null);
@@ -55,6 +76,85 @@ export function PracticeTest() {
       return;
     }
     if (questionQueue.length > 0 && !startPracticeWithWeakAreas) return;
+    if (assessmentMode && questions.length > 0 && questionQueue.length === 0) {
+      setBuildingAssessmentQueue(true);
+      (async () => {
+        const userId = await getCurrentUserId();
+        const wrongRows = userId ? await getUserWrongQuestions(userId) : [];
+        const target = 10;
+        const gptQuestions: Question[] = [];
+        if (wrongRows.length > 0) {
+          for (let i = 0; i < target; i++) {
+            const row = wrongRows[i % wrongRows.length];
+            const source = questions.find((q) => q.id === row.question_id);
+            try {
+              if (source) {
+                const similar = await generateSimilarQuestion(
+                  source.question,
+                  source.subject || source.category,
+                  source.difficulty
+                );
+                gptQuestions.push({
+                  id: `assessment-${Date.now()}-${i}`,
+                  question: similar.question,
+                  options: similar.options,
+                  correctAnswer: similar.correctAnswer,
+                  explanation: similar.explanation,
+                  whyWrong: {},
+                  subject: similar.category,
+                  category: similar.category,
+                  difficulty: source.difficulty,
+                });
+              } else {
+                const gen = await generateQuestion({ subject: row.category || 'General', difficulty: 'medium' });
+                gptQuestions.push({
+                  id: `assessment-${Date.now()}-${i}`,
+                  question: gen.question,
+                  options: gen.options,
+                  correctAnswer: gen.correctAnswer,
+                  explanation: gen.explanation,
+                  whyWrong: {},
+                  subject: gen.category,
+                  category: gen.category,
+                  difficulty: 'medium',
+                });
+              }
+            } catch {
+              const gen = await generateQuestion({ subject: 'General', difficulty: 'medium' }).catch(() => null);
+              if (gen) gptQuestions.push({ id: `assessment-${Date.now()}-${i}`, ...gen, whyWrong: {}, difficulty: 'medium' });
+            }
+          }
+        } else {
+          for (let i = 0; i < target; i++) {
+            try {
+              const gen = await generateQuestion({ subject: 'Exam preparation', difficulty: 'medium' });
+              gptQuestions.push({
+                id: `assessment-${Date.now()}-${i}`,
+                question: gen.question,
+                options: gen.options,
+                correctAnswer: gen.correctAnswer,
+                explanation: gen.explanation,
+                whyWrong: {},
+                subject: gen.category,
+                category: gen.category,
+                difficulty: 'medium',
+              });
+            } catch {
+              // skip or use fallback
+            }
+          }
+        }
+        if (gptQuestions.length > 0) {
+          setQuestionQueue(gptQuestions);
+          setCurrentQuestionIndex(0);
+        } else {
+          const list = questions.slice(0, 10);
+          setQuestionQueue(list);
+        }
+        setBuildingAssessmentQueue(false);
+      })();
+      return;
+    }
     if (startPracticeWithWeakAreas && questions.length > 0) {
       setBuildingWeakQueue(true);
       (async () => {
@@ -101,9 +201,23 @@ export function PracticeTest() {
       return;
     }
     if (questions.length > 0 && questionQueue.length === 0 && !buildingWeakQueue) {
-      setQuestionQueue([...questions]);
+      const list = questionLimit ? questions.slice(0, questionLimit) : [...questions];
+      setQuestionQueue(list);
     }
-  }, [questions, questionQueue.length, reviewMistakesQuestions, startPracticeWithWeakAreas]);
+  }, [questions, questionQueue.length, reviewMistakesQuestions, startPracticeWithWeakAreas, restoredPracticeState, questionLimit, assessmentMode]);
+
+  useEffect(() => {
+    if (questionQueue.length > 0 && !assessmentMode) savePracticeState(questionQueue.map((q) => q.id), currentQuestionIndex);
+  }, [questionQueue, currentQuestionIndex, assessmentMode]);
+
+  const goToDashboard = () => {
+    clearPracticeState();
+    setCurrentScreen('dashboard');
+  };
+  const goToResults = () => {
+    clearPracticeState();
+    setCurrentScreen('results');
+  };
 
   const currentQuestion = questionQueue[currentQuestionIndex];
   const progress = questionQueue.length ? ((currentQuestionIndex + 1) / questionQueue.length) * 100 : 0;
@@ -124,7 +238,7 @@ export function PracticeTest() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center max-w-md p-6">
           <p className="text-destructive mb-4">{questionsError}</p>
-          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+          <Button onClick={goToDashboard}>Back to Dashboard</Button>
         </div>
       </div>
     );
@@ -134,7 +248,7 @@ export function PracticeTest() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center max-w-md p-6">
           <p className="text-muted-foreground mb-4">No questions available. Add questions in Supabase.</p>
-          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+          <Button onClick={goToDashboard}>Back to Dashboard</Button>
         </div>
       </div>
     );
@@ -145,7 +259,7 @@ export function PracticeTest() {
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-muted-foreground">
-            {buildingWeakQueue ? 'Loading your weak-area questions...' : 'Preparing questions...'}
+            {buildingAssessmentQueue ? 'Generating your personalized assessment...' : buildingWeakQueue ? 'Loading your weak-area questions...' : 'Preparing questions...'}
           </p>
         </div>
       </div>
@@ -273,7 +387,7 @@ export function PracticeTest() {
       setShowHint(false);
       setIsRetryQuestion(false);
     } else {
-      setCurrentScreen('results');
+      goToResults();
     }
   };
 
@@ -356,7 +470,7 @@ const similarQuestions = questions.filter(q =>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setCurrentScreen('dashboard')}
+              onClick={goToDashboard}
               className="gap-2"
             >
               <ArrowLeft className="w-4 h-4" />

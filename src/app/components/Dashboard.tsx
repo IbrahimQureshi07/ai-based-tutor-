@@ -268,8 +268,12 @@ export function Dashboard() {
                 <Lightbulb className="w-6 h-6 text-primary" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold mb-2">AI Recommendation</h3>
-                <p className="text-muted-foreground mb-4">{getAISuggestion()}</p>
+                <h3 className="font-semibold mb-2">Personalized Assessment</h3>
+                <p className="text-muted-foreground mb-4">
+                  {!userProgress.completedAssessment
+                    ? "We check your weak areas from past attempts and generate practice questions to improve. 10 questions tailored for you."
+                    : "Based on your mistakes we'll give you targeted practice. Continue where you left off."}
+                </p>
                 <Button
                   onClick={() => {
                     if (!userProgress.completedAssessment) {
