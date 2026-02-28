@@ -8,7 +8,7 @@ import { Question } from '@/app/data/exam-data';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { getCurrentUserId, saveWrongQuestion, getUserWrongQuestions } from '@/app/services/userWrongQuestions';
 import { generateSimilarQuestion, generateQuestion } from '@/app/services/aiService';
-import { savePracticeState, clearPracticeState } from '@/app/services/practiceStateStorage';
+import { savePracticeState, clearPracticeState, saveAssessmentState, clearAssessmentState } from '@/app/services/practiceStateStorage';
 import {
   ArrowLeft,
   Lightbulb,
@@ -41,6 +41,8 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setStartPracticeWithWeakAreas,
     restoredPracticeState,
     setRestoredPracticeState,
+    restoredAssessmentState,
+    setRestoredAssessmentState,
   } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
@@ -59,6 +61,16 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
   const [buildingAssessmentQueue, setBuildingAssessmentQueue] = useState(false);
 
   useEffect(() => {
+    if (restoredAssessmentState && restoredAssessmentState.questions.length > 0) {
+      const queue = restoredAssessmentState.questions.map((q) => ({
+        ...q,
+        whyWrong: q.whyWrong || {},
+      })) as Question[];
+      setQuestionQueue(queue);
+      setCurrentQuestionIndex(Math.min(restoredAssessmentState.currentIndex, Math.max(0, queue.length - 1)));
+      setRestoredAssessmentState(null);
+      return;
+    }
     if (restoredPracticeState && questions.length > 0) {
       const ordered = restoredPracticeState.questionIds
         .map((id) => questions.find((q) => q.id === id))
@@ -204,18 +216,29 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       const list = questionLimit ? questions.slice(0, questionLimit) : [...questions];
       setQuestionQueue(list);
     }
-  }, [questions, questionQueue.length, reviewMistakesQuestions, startPracticeWithWeakAreas, restoredPracticeState, questionLimit, assessmentMode]);
+  }, [questions, questionQueue.length, reviewMistakesQuestions, startPracticeWithWeakAreas, restoredPracticeState, restoredAssessmentState, questionLimit, assessmentMode]);
 
   useEffect(() => {
-    if (questionQueue.length > 0 && !assessmentMode) savePracticeState(questionQueue.map((q) => q.id), currentQuestionIndex);
+    if (questionQueue.length > 0) {
+      if (assessmentMode) {
+        saveAssessmentState(
+          questionQueue.map((q) => ({ id: q.id, question: q.question, options: q.options, correctAnswer: q.correctAnswer, explanation: q.explanation, whyWrong: q.whyWrong || {}, subject: q.subject, category: q.category, difficulty: q.difficulty })),
+          currentQuestionIndex
+        );
+      } else {
+        savePracticeState(questionQueue.map((q) => q.id), currentQuestionIndex);
+      }
+    }
   }, [questionQueue, currentQuestionIndex, assessmentMode]);
 
   const goToDashboard = () => {
     clearPracticeState();
+    clearAssessmentState();
     setCurrentScreen('dashboard');
   };
   const goToResults = () => {
     clearPracticeState();
+    clearAssessmentState();
     setCurrentScreen('results');
   };
 

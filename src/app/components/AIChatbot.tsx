@@ -42,13 +42,14 @@ export function AIChatbot() {
     setApiError(false);
 
     try {
-      // Get AI response with user context
+      const conversationHistory = chatMessages.map((m) => ({ role: m.role, content: m.content }));
       const response = await getChatbotResponse(userMessage, {
         userProgress: {
           accuracy: userProgress.accuracy,
           weakAreas: userProgress.weakAreas,
           level: userProgress.level,
         },
+        conversationHistory,
       });
       
       addChatMessage('ai', response);
@@ -78,12 +79,14 @@ export function AIChatbot() {
     setApiError(false);
 
     try {
+      const conversationHistory = chatMessages.map((m) => ({ role: m.role, content: m.content }));
       const response = await getChatbotResponse(prompt, {
         userProgress: {
           accuracy: userProgress.accuracy,
           weakAreas: userProgress.weakAreas,
           level: userProgress.level,
         },
+        conversationHistory,
       });
       
       addChatMessage('ai', response);

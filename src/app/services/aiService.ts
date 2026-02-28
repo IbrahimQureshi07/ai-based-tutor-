@@ -82,7 +82,7 @@ async function callOpenAI(
 }
 
 /**
- * Get AI chatbot response for study-related questions
+ * Get AI chatbot response with full conversation history so it remembers context.
  */
 export async function getChatbotResponse(
   userMessage: string,
@@ -94,13 +94,16 @@ export async function getChatbotResponse(
       weakAreas: string[];
       level: number;
     };
+    /** Previous messages in the chat so the AI can remember what was discussed */
+    conversationHistory?: Array<{ role: 'user' | 'ai'; content: string }>;
   }
 ): Promise<string> {
   const systemPrompt = `You are an AI tutor helping students prepare for state-level exams. 
 You are friendly, encouraging, and explain concepts clearly in simple language.
 You help students understand their mistakes and guide them to improve.
 Always respond in a helpful, educational manner. Keep responses concise (2-3 sentences max unless explaining a complex concept).
-If the student asks about a specific question or topic, provide detailed explanations.`;
+If the student asks about a specific question or topic, provide detailed explanations.
+Important: Use the conversation history. When the student says things like "explain more", "I didn't understand", "in detail please", or "dubarah batao", always refer back to the topic or question you were just discussing—do not ask them to specify the topic again.`;
 
   const contextInfo = context ? `
 Student Context:
@@ -111,8 +114,14 @@ Student Context:
 ${context.currentQuestion ? `- Current Question: ${context.currentQuestion}` : ''}
 ` : '';
 
+  const history = (context?.conversationHistory ?? []).slice(-20).map((m) => ({
+    role: (m.role === 'ai' ? 'assistant' : m.role) as 'user' | 'assistant' | 'system',
+    content: m.content,
+  }));
+
   const messages: ChatMessage[] = [
     { role: 'system', content: systemPrompt + contextInfo },
+    ...history,
     { role: 'user', content: userMessage },
   ];
 
