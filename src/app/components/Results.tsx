@@ -19,8 +19,14 @@ import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarA
 import { useEffect, useState } from 'react';
 
 export function Results() {
-  const { userProgress, setCurrentScreen, answeredQuestions, addChatMessage, setChatOpen } = useApp();
+  const { userProgress, setCurrentScreen, addChatMessage, setChatOpen, lastSessionResults, setStartPracticeWithWeakAreas } = useApp();
   const [hasCheckedUnlock, setHasCheckedUnlock] = useState(false);
+
+  // Use last test session for all numbers and charts; fallback to userProgress when no session data
+  const total = lastSessionResults?.total ?? userProgress.totalQuestions;
+  const correct = lastSessionResults?.correct ?? userProgress.correctAnswers;
+  const incorrect = lastSessionResults?.incorrect ?? (userProgress.totalQuestions - userProgress.correctAnswers);
+  const sessionAccuracy = total > 0 ? Math.round((correct / total) * 100) : userProgress.accuracy;
 
   // Check for auto-unlock on mount
   useEffect(() => {
@@ -29,7 +35,6 @@ export function Results() {
     const mockTestUnlocked = userProgress.examReadiness >= 80;
     const finalExamUnlocked = userProgress.mockTestsCompleted >= 2 && userProgress.examReadiness >= 90;
     
-    // Check if Mock Test just unlocked
     if (mockTestUnlocked && userProgress.examReadiness >= 80 && userProgress.totalQuestions > 5) {
       setTimeout(() => {
         addChatMessage('ai', '🎉 Great job! You\'ve reached 80% readiness. Mock Test is now unlocked!');
@@ -37,7 +42,6 @@ export function Results() {
       }, 1000);
     }
     
-    // Check if Final Exam just unlocked
     if (finalExamUnlocked && userProgress.mockTestsCompleted >= 2) {
       setTimeout(() => {
         addChatMessage('ai', '🏆 Outstanding! You\'re ready for the Final Exam. Stay focused and confident.');
@@ -48,49 +52,48 @@ export function Results() {
     setHasCheckedUnlock(true);
   }, [userProgress.examReadiness, userProgress.mockTestsCompleted, hasCheckedUnlock]);
 
-  // Calculate category-wise performance
-  const categoryPerformance = new Map<string, { correct: number; total: number }>();
-  
-  answeredQuestions.forEach((answer, questionId) => {
-    // This is simplified - in a real app, you'd look up the question details
-    const category = 'General'; // Placeholder
-    const current = categoryPerformance.get(category) || { correct: 0, total: 0 };
-    categoryPerformance.set(category, {
-      correct: current.correct + (answer.correct ? 1 : 0),
-      total: current.total + 1
-    });
-  });
-
   const pieData = [
-    { name: 'Correct', value: userProgress.correctAnswers, color: '#10B981' },
-    { name: 'Incorrect', value: userProgress.totalQuestions - userProgress.correctAnswers, color: '#EF4444' }
+    { name: 'Correct', value: correct, color: '#10B981' },
+    { name: 'Incorrect', value: incorrect, color: '#EF4444' }
   ];
 
-  const radarData = [
-    { subject: 'History', score: 75 + Math.random() * 20 },
-    { subject: 'Geography', score: 65 + Math.random() * 20 },
-    { subject: 'Science', score: 80 + Math.random() * 15 },
-    { subject: 'Math', score: 70 + Math.random() * 20 },
-    { subject: 'English', score: 85 + Math.random() * 10 },
-    { subject: 'Reasoning', score: 60 + Math.random() * 25 }
-  ];
+  // Difficulty breakdown from last session (Easy, Medium, Hard order)
+  const barData = lastSessionResults?.byDifficulty
+    ? ['easy', 'medium', 'hard']
+        .filter((d) => lastSessionResults.byDifficulty[d]?.total)
+        .map((d) => ({
+          difficulty: d.charAt(0).toUpperCase() + d.slice(1),
+          correct: lastSessionResults.byDifficulty[d].correct,
+          total: lastSessionResults.byDifficulty[d].total,
+        }))
+    : [];
 
-  const barData = [
-    { difficulty: 'Easy', correct: Math.floor(userProgress.correctAnswers * 0.5), total: Math.floor(userProgress.totalQuestions * 0.4) },
-    { difficulty: 'Medium', correct: Math.floor(userProgress.correctAnswers * 0.35), total: Math.floor(userProgress.totalQuestions * 0.4) },
-    { difficulty: 'Hard', correct: Math.floor(userProgress.correctAnswers * 0.15), total: Math.floor(userProgress.totalQuestions * 0.2) }
-  ];
+  // Subject-wise radar from last session categories
+  const radarData = lastSessionResults?.byCategory
+    ? Object.entries(lastSessionResults.byCategory).map(([subject, { correct: c, total: t }]) => ({
+        subject: subject.length > 12 ? subject.slice(0, 12) + '…' : subject,
+        score: t > 0 ? Math.round((c / t) * 100) : 0,
+      }))
+    : [];
 
-  const weakAreas = [
-    { subject: 'Indian History', accuracy: 55, status: 'needs-work' },
-    { subject: 'Chemistry', accuracy: 62, status: 'improving' },
-    { subject: 'Logical Reasoning', accuracy: 48, status: 'needs-work' }
-  ];
+  // Weak areas = categories where accuracy < 100%, sorted by accuracy ascending (worst first)
+  const weakAreas = lastSessionResults?.byCategory
+    ? Object.entries(lastSessionResults.byCategory)
+        .map(([subject, { correct: c, total: t }]) => ({
+          subject,
+          accuracy: t > 0 ? Math.round((c / t) * 100) : 0,
+          status: t > 0 && c < t ? 'needs-work' : 'improving',
+        }))
+        .filter((a) => a.accuracy < 100)
+        .sort((a, b) => a.accuracy - b.accuracy)
+        .slice(0, 6)
+    : [];
 
   const getPerformanceMessage = () => {
-    if (userProgress.accuracy >= 90) return { title: 'Outstanding! 🎉', message: 'You\'re performing at an expert level!', color: 'text-success' };
-    if (userProgress.accuracy >= 75) return { title: 'Great Job! 👏', message: 'You\'re on the right track to success!', color: 'text-primary' };
-    if (userProgress.accuracy >= 60) return { title: 'Good Progress 💪', message: 'Keep practicing to improve further!', color: 'text-warning' };
+    const acc = total > 0 ? sessionAccuracy : userProgress.accuracy;
+    if (acc >= 90) return { title: 'Outstanding! 🎉', message: 'You\'re performing at an expert level!', color: 'text-success' };
+    if (acc >= 75) return { title: 'Great Job! 👏', message: 'You\'re on the right track to success!', color: 'text-primary' };
+    if (acc >= 60) return { title: 'Good Progress 💪', message: 'Keep practicing to improve further!', color: 'text-warning' };
     return { title: 'Keep Going! 🚀', message: 'Every expert was once a beginner!', color: 'text-muted-foreground' };
   };
 
@@ -132,12 +135,12 @@ export function Results() {
             <p className="text-xl text-white/90 mb-6">{performance.message}</p>
             <div className="flex items-center justify-center gap-8">
               <div>
-                <div className="text-5xl font-bold">{userProgress.accuracy}%</div>
+                <div className="text-5xl font-bold">{total > 0 ? sessionAccuracy : userProgress.accuracy}%</div>
                 <div className="text-white/80">Accuracy</div>
               </div>
               <div className="w-px h-16 bg-white/30" />
               <div>
-                <div className="text-5xl font-bold">{userProgress.totalQuestions}</div>
+                <div className="text-5xl font-bold">{total}</div>
                 <div className="text-white/80">Questions</div>
               </div>
               <div className="w-px h-16 bg-white/30" />
@@ -165,23 +168,27 @@ export function Results() {
                 Score Breakdown
               </h3>
               <div className="flex items-center justify-center mb-6">
-                <ResponsiveContainer width="100%" height={200}>
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {pieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+                {total > 0 ? (
+                  <ResponsiveContainer width="100%" height={200}>
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={60}
+                        outerRadius={80}
+                        paddingAngle={5}
+                        dataKey="value"
+                      >
+                        {pieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="h-[200px] flex items-center justify-center text-muted-foreground text-sm">Complete a test to see score breakdown.</div>
+                )}
               </div>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
@@ -189,19 +196,19 @@ export function Results() {
                     <CheckCircle2 className="w-4 h-4 text-success" />
                     <span>Correct Answers</span>
                   </div>
-                  <span className="font-semibold">{userProgress.correctAnswers}</span>
+                  <span className="font-semibold">{correct}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-destructive" />
                     <span>Incorrect Answers</span>
                   </div>
-                  <span className="font-semibold">{userProgress.totalQuestions - userProgress.correctAnswers}</span>
+                  <span className="font-semibold">{incorrect}</span>
                 </div>
                 <div className="pt-3 border-t border-border">
                   <div className="flex items-center justify-between font-semibold">
                     <span>Total Questions</span>
-                    <span>{userProgress.totalQuestions}</span>
+                    <span>{total}</span>
                   </div>
                 </div>
               </div>
@@ -219,17 +226,21 @@ export function Results() {
                 <TrendingUp className="w-5 h-5 text-primary" />
                 Difficulty Analysis
               </h3>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={barData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                  <XAxis dataKey="difficulty" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey="correct" fill="#10B981" name="Correct" radius={[8, 8, 0, 0]} />
-                  <Bar dataKey="total" fill="#e5e7eb" name="Total" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              {barData.length > 0 ? (
+                <ResponsiveContainer width="100%" height={250}>
+                  <BarChart data={barData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="difficulty" />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey="correct" fill="#10B981" name="Correct" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="total" fill="#e5e7eb" name="Total" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-muted-foreground text-sm py-8 text-center">Complete a test to see difficulty breakdown.</p>
+              )}
             </Card>
           </motion.div>
         </div>
@@ -245,13 +256,17 @@ export function Results() {
               <Award className="w-5 h-5 text-primary" />
               Subject-wise Performance
             </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <RadarChart data={radarData}>
-                <PolarGrid stroke="#e5e7eb" />
-                <PolarAngleAxis dataKey="subject" />
-                <Radar name="Your Score" dataKey="score" stroke="#2563EB" fill="#2563EB" fillOpacity={0.6} />
-              </RadarChart>
-            </ResponsiveContainer>
+            {radarData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <RadarChart data={radarData}>
+                  <PolarGrid stroke="#e5e7eb" />
+                  <PolarAngleAxis dataKey="subject" />
+                  <Radar name="Your Score" dataKey="score" stroke="#2563EB" fill="#2563EB" fillOpacity={0.6} />
+                </RadarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-muted-foreground text-sm py-8 text-center">Complete a test to see subject-wise performance.</p>
+            )}
           </Card>
         </motion.div>
 
@@ -267,18 +282,25 @@ export function Results() {
               Areas for Improvement
             </h3>
             <div className="space-y-4 mb-6">
-              {weakAreas.map((area, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium">{area.subject}</span>
-                    <span className="text-sm text-muted-foreground">{area.accuracy}%</span>
+              {weakAreas.length > 0 ? (
+                weakAreas.map((area, index) => (
+                  <div key={index} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium">{area.subject}</span>
+                      <span className="text-sm text-muted-foreground">{area.accuracy}%</span>
+                    </div>
+                    <Progress value={area.accuracy} className="h-2" />
                   </div>
-                  <Progress value={area.accuracy} className="h-2" />
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-muted-foreground text-sm py-4">No weak areas in this test — or complete a test to see topics to improve.</p>
+              )}
             </div>
             <Button
-              onClick={() => setCurrentScreen('practice')}
+              onClick={() => {
+                setStartPracticeWithWeakAreas(true);
+                setCurrentScreen('practice');
+              }}
               variant="destructive"
               className="w-full"
             >

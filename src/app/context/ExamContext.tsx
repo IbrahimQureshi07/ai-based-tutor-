@@ -28,12 +28,21 @@ interface AppContextType {
   /** When true, PracticeTest builds queue from DB wrong questions + GPT (AI Assessment flow) */
   startPracticeWithWeakAreas: boolean;
   setStartPracticeWithWeakAreas: (v: boolean) => void;
-  /** Restored from sessionStorage so user can continue test after reload/tab switch */
-  restoredPracticeState: { questionIds: string[]; currentIndex: number } | null;
-  setRestoredPracticeState: (v: { questionIds: string[]; currentIndex: number } | null) => void;
+  /** Restored from sessionStorage so user can continue test after reload/tab switch (full questions = GPT survives) */
+  restoredPracticeState: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; questionIds?: string[]; currentIndex: number } | null;
+  setRestoredPracticeState: (v: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; questionIds?: string[]; currentIndex: number } | null) => void;
   /** Restored assessment (full questions) so tab switch doesn't lose assessment test */
   restoredAssessmentState: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; currentIndex: number } | null;
   setRestoredAssessmentState: (v: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; currentIndex: number } | null) => void;
+  /** Last test session stats for Results page (dynamic charts) */
+  lastSessionResults: {
+    total: number;
+    correct: number;
+    incorrect: number;
+    byDifficulty: Record<string, { correct: number; total: number }>;
+    byCategory: Record<string, { correct: number; total: number }>;
+  } | null;
+  setLastSessionResults: (v: AppContextType['lastSessionResults']) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -50,8 +59,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [mistakesList, setMistakesList] = useState<Array<{ question: Question; userAnswer: number; count: number }>>([]);
   const [reviewMistakesQuestions, setReviewMistakesQuestions] = useState<Question[] | null>(null);
   const [startPracticeWithWeakAreas, setStartPracticeWithWeakAreas] = useState(false);
-  const [restoredPracticeState, setRestoredPracticeState] = useState<{ questionIds: string[]; currentIndex: number } | null>(null);
+  const [restoredPracticeState, setRestoredPracticeState] = useState<{ questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; questionIds?: string[]; currentIndex: number } | null>(null);
   const [restoredAssessmentState, setRestoredAssessmentState] = useState<{ questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; currentIndex: number } | null>(null);
+  const [lastSessionResults, setLastSessionResults] = useState<{
+    total: number;
+    correct: number;
+    incorrect: number;
+    byDifficulty: Record<string, { correct: number; total: number }>;
+    byCategory: Record<string, { correct: number; total: number }>;
+  } | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -69,8 +85,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (assessmentSaved && assessmentSaved.questions.length > 0) {
           setRestoredAssessmentState({ questions: assessmentSaved.questions, currentIndex: assessmentSaved.currentIndex });
           setCurrentScreen('practice');
-        } else if (practiceSaved && practiceSaved.questionIds.length > 0) {
-          setRestoredPracticeState({ questionIds: practiceSaved.questionIds, currentIndex: practiceSaved.currentIndex });
+        } else if (practiceSaved && (practiceSaved.questions.length > 0 || (practiceSaved.questionIds && practiceSaved.questionIds.length > 0))) {
+          setRestoredPracticeState({
+            questions: practiceSaved.questions || [],
+            questionIds: practiceSaved.questionIds,
+            currentIndex: practiceSaved.currentIndex,
+          });
           setCurrentScreen('practice');
         } else {
           setCurrentScreen('dashboard');
@@ -88,8 +108,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (assessmentSaved && assessmentSaved.questions.length > 0) {
           setRestoredAssessmentState({ questions: assessmentSaved.questions, currentIndex: assessmentSaved.currentIndex });
           setCurrentScreen('practice');
-        } else if (practiceSaved && practiceSaved.questionIds.length > 0) {
-          setRestoredPracticeState({ questionIds: practiceSaved.questionIds, currentIndex: practiceSaved.currentIndex });
+        } else if (practiceSaved && (practiceSaved.questions.length > 0 || (practiceSaved.questionIds && practiceSaved.questionIds.length > 0))) {
+          setRestoredPracticeState({
+            questions: practiceSaved.questions || [],
+            questionIds: practiceSaved.questionIds,
+            currentIndex: practiceSaved.currentIndex,
+          });
           setCurrentScreen('practice');
         } else {
           setCurrentScreen('dashboard');
@@ -196,6 +220,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setRestoredPracticeState,
         restoredAssessmentState,
         setRestoredAssessmentState,
+        lastSessionResults,
+        setLastSessionResults,
       }}
     >
       {children}

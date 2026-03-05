@@ -7,7 +7,7 @@ import { Progress } from '@/app/components/ui/progress';
 import { Question } from '@/app/data/exam-data';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { getCurrentUserId, saveWrongQuestion, getUserWrongQuestions } from '@/app/services/userWrongQuestions';
-import { generateSimilarQuestion, generateQuestion } from '@/app/services/aiService';
+import { generateSimilarQuestion, generateQuestion, generateHint } from '@/app/services/aiService';
 import { savePracticeState, clearPracticeState, saveAssessmentState, clearAssessmentState } from '@/app/services/practiceStateStorage';
 import {
   ArrowLeft,
@@ -43,6 +43,8 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setRestoredPracticeState,
     restoredAssessmentState,
     setRestoredAssessmentState,
+    setLastSessionResults,
+    answeredQuestions,
   } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
@@ -52,6 +54,8 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
   const [isCorrect, setIsCorrect] = useState(false);
   const [hintsUsed, setHintsUsed] = useState(0);
   const [showHint, setShowHint] = useState(false);
+  const [hintText, setHintText] = useState('');
+  const [loadingHint, setLoadingHint] = useState(false);
   const [practiceScore, setPracticeScore] = useState({ correct: 0, total: 0 });
   const [wrongQuestionsCount, setWrongQuestionsCount] = useState<Map<string, number>>(new Map());
   const [isRetryQuestion, setIsRetryQuestion] = useState(false);
@@ -71,13 +75,23 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       setRestoredAssessmentState(null);
       return;
     }
-    if (restoredPracticeState && questions.length > 0) {
-      const ordered = restoredPracticeState.questionIds
-        .map((id) => questions.find((q) => q.id === id))
-        .filter((q): q is Question => q != null);
-      const queue = ordered.length > 0 ? ordered : [...questions];
-      setQuestionQueue(queue);
-      setCurrentQuestionIndex(Math.min(restoredPracticeState.currentIndex, Math.max(0, queue.length - 1)));
+    if (restoredPracticeState && (restoredPracticeState.questions?.length > 0 || (restoredPracticeState.questionIds && restoredPracticeState.questionIds.length > 0))) {
+      // Prefer full questions (includes GPT-generated) so tab switch doesn't lose them
+      if (restoredPracticeState.questions && restoredPracticeState.questions.length > 0) {
+        const queue = restoredPracticeState.questions.map((q) => ({
+          ...q,
+          whyWrong: q.whyWrong || {},
+        })) as Question[];
+        setQuestionQueue(queue);
+        setCurrentQuestionIndex(Math.min(restoredPracticeState.currentIndex, Math.max(0, queue.length - 1)));
+      } else if (restoredPracticeState.questionIds && questions.length > 0) {
+        const ordered = restoredPracticeState.questionIds
+          .map((id) => questions.find((q) => q.id === id))
+          .filter((q): q is Question => q != null);
+        const queue = ordered.length > 0 ? ordered : [...questions];
+        setQuestionQueue(queue);
+        setCurrentQuestionIndex(Math.min(restoredPracticeState.currentIndex, Math.max(0, queue.length - 1)));
+      }
       setRestoredPracticeState(null);
       return;
     }
@@ -218,6 +232,12 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     }
   }, [questions, questionQueue.length, reviewMistakesQuestions, startPracticeWithWeakAreas, restoredPracticeState, restoredAssessmentState, questionLimit, assessmentMode]);
 
+  // Clear hint when moving to another question so next hint is fresh
+  useEffect(() => {
+    setShowHint(false);
+    setHintText('');
+  }, [currentQuestionIndex]);
+
   useEffect(() => {
     if (questionQueue.length > 0) {
       if (assessmentMode) {
@@ -226,7 +246,20 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
           currentQuestionIndex
         );
       } else {
-        savePracticeState(questionQueue.map((q) => q.id), currentQuestionIndex);
+        savePracticeState(
+          questionQueue.map((q) => ({
+            id: q.id,
+            question: q.question,
+            options: q.options,
+            correctAnswer: q.correctAnswer,
+            explanation: q.explanation,
+            whyWrong: q.whyWrong || {},
+            subject: q.subject || '',
+            category: q.category || '',
+            difficulty: q.difficulty || 'medium',
+          })),
+          currentQuestionIndex
+        );
       }
     }
   }, [questionQueue, currentQuestionIndex, assessmentMode]);
@@ -237,6 +270,31 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setCurrentScreen('dashboard');
   };
   const goToResults = () => {
+    // Build session results from this test only (dynamic charts on Results page)
+    const byDifficulty: Record<string, { correct: number; total: number }> = {};
+    const byCategory: Record<string, { correct: number; total: number }> = {};
+    let correct = 0;
+    questionQueue.forEach((q) => {
+      const ans = answeredQuestions.get(q.id);
+      const isCorrect = ans?.correct ?? false;
+      if (isCorrect) correct++;
+      const diff = q.difficulty || 'medium';
+      if (!byDifficulty[diff]) byDifficulty[diff] = { correct: 0, total: 0 };
+      byDifficulty[diff].total += 1;
+      if (isCorrect) byDifficulty[diff].correct += 1;
+      const cat = q.category || q.subject || 'General';
+      if (!byCategory[cat]) byCategory[cat] = { correct: 0, total: 0 };
+      byCategory[cat].total += 1;
+      if (isCorrect) byCategory[cat].correct += 1;
+    });
+    const total = questionQueue.length;
+    setLastSessionResults({
+      total,
+      correct,
+      incorrect: total - correct,
+      byDifficulty,
+      byCategory,
+    });
     clearPracticeState();
     clearAssessmentState();
     setCurrentScreen('results');
@@ -414,11 +472,25 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     }
   };
 
-  const handleHint = () => {
-    if (hintsUsed < maxHints) {
+  const handleHint = async () => {
+    if (hintsUsed >= maxHints || showHint) return;
+    setHintsUsed(hintsUsed + 1);
+    updateProgress({ hintsUsed: userProgress.hintsUsed + 1 });
+    setLoadingHint(true);
+    try {
+      const hint = await generateHint(
+        currentQuestion.question,
+        currentQuestion.options,
+        currentQuestion.category || 'General',
+        currentQuestion.difficulty || 'medium'
+      );
+      setHintText(hint);
       setShowHint(true);
-      setHintsUsed(hintsUsed + 1);
-      updateProgress({ hintsUsed: userProgress.hintsUsed + 1 });
+    } catch {
+      setHintText('Read the question again and consider each option carefully.');
+      setShowHint(true);
+    } finally {
+      setLoadingHint(false);
     }
   };
 
@@ -594,7 +666,7 @@ const similarQuestions = questions.filter(q =>
                 </div>
 
                 {/* Hint Section */}
-                {showHint && !showResult && (
+                {(showHint || loadingHint) && !showResult && (
                   <motion.div
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
@@ -605,7 +677,7 @@ const similarQuestions = questions.filter(q =>
                       <div>
                         <h4 className="font-semibold mb-1 text-warning">Hint</h4>
                         <p className="text-sm text-muted-foreground">
-                          Look carefully at the question keywords. The correct answer relates directly to {currentQuestion.category.toLowerCase()}.
+                          {loadingHint ? 'Getting a hint...' : hintText}
                         </p>
                       </div>
                     </div>
@@ -686,11 +758,11 @@ const similarQuestions = questions.filter(q =>
                       <Button
                         variant="outline"
                         onClick={handleHint}
-                        disabled={hintsUsed >= maxHints || showHint}
+                        disabled={hintsUsed >= maxHints || showHint || loadingHint}
                         className="gap-2"
                       >
                         <Lightbulb className="w-4 h-4" />
-                        Hint ({hintsUsed}/{maxHints})
+                        {loadingHint ? 'Loading...' : `Hint (${hintsUsed}/${maxHints})`}
                       </Button>
                     )}
                   </div>

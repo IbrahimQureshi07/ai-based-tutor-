@@ -9,7 +9,7 @@ import { Trophy, Clock, AlertTriangle, Award, Download, Share2 } from 'lucide-re
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 
 export function FinalExam() {
-  const { setCurrentScreen, answerQuestion, updateProgress, userProgress, addChatMessage, setChatOpen } = useApp();
+  const { setCurrentScreen, answerQuestion, updateProgress, userProgress, addChatMessage, setChatOpen, setLastSessionResults } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -391,6 +391,27 @@ export function FinalExam() {
               <Button
                 onClick={() => {
                   setShowCertificate(false);
+                  const byDifficulty: Record<string, { correct: number; total: number }> = {};
+                  const byCategory: Record<string, { correct: number; total: number }> = {};
+                  let correct = 0;
+                  let total = 0;
+                  questions.forEach((question, index) => {
+                    const userAnswer = answers.get(index);
+                    if (userAnswer !== undefined) {
+                      total++;
+                      const isCorrect = userAnswer === question.correctAnswer;
+                      if (isCorrect) correct++;
+                      const diff = question.difficulty || 'medium';
+                      if (!byDifficulty[diff]) byDifficulty[diff] = { correct: 0, total: 0 };
+                      byDifficulty[diff].total += 1;
+                      if (isCorrect) byDifficulty[diff].correct += 1;
+                      const cat = question.category || question.subject || 'General';
+                      if (!byCategory[cat]) byCategory[cat] = { correct: 0, total: 0 };
+                      byCategory[cat].total += 1;
+                      if (isCorrect) byCategory[cat].correct += 1;
+                    }
+                  });
+                  setLastSessionResults({ total, correct, incorrect: total - correct, byDifficulty, byCategory });
                   setCurrentScreen('results');
                 }}
                 size="lg"
