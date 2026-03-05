@@ -33,7 +33,7 @@ export function Results() {
     if (hasCheckedUnlock) return;
     
     const mockTestUnlocked = userProgress.examReadiness >= 80;
-    const finalExamUnlocked = userProgress.mockTestsCompleted >= 2 && userProgress.examReadiness >= 90;
+    const finalExamUnlocked = userProgress.mockTestsCompleted >= 1 && userProgress.examReadiness >= 90;
     
     if (mockTestUnlocked && userProgress.examReadiness >= 80 && userProgress.totalQuestions > 5) {
       setTimeout(() => {
@@ -42,7 +42,7 @@ export function Results() {
       }, 1000);
     }
     
-    if (finalExamUnlocked && userProgress.mockTestsCompleted >= 2) {
+    if (finalExamUnlocked && userProgress.mockTestsCompleted >= 1) {
       setTimeout(() => {
         addChatMessage('ai', '🏆 Outstanding! You\'re ready for the Final Exam. Stay focused and confident.');
         setChatOpen(true);
@@ -100,7 +100,7 @@ export function Results() {
   const performance = getPerformanceMessage();
 
   const getNextUnlock = () => {
-    if (userProgress.examReadiness >= 90 && userProgress.mockTestsCompleted >= 2) {
+    if (userProgress.examReadiness >= 90 && userProgress.mockTestsCompleted >= 1) {
       return { title: 'Final Exam', message: 'You can now take the final exam!' };
     }
     if (userProgress.examReadiness >= 80) {
@@ -257,13 +257,28 @@ export function Results() {
               Subject-wise Performance
             </h3>
             {radarData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="#e5e7eb" />
-                  <PolarAngleAxis dataKey="subject" />
-                  <Radar name="Your Score" dataKey="score" stroke="#2563EB" fill="#2563EB" fillOpacity={0.6} />
-                </RadarChart>
-              </ResponsiveContainer>
+              <>
+                {radarData.length >= 2 && (
+                  <ResponsiveContainer width="100%" height={280}>
+                    <RadarChart data={radarData}>
+                      <PolarGrid stroke="#e5e7eb" />
+                      <PolarAngleAxis dataKey="subject" />
+                      <Radar name="Your Score" dataKey="score" stroke="#2563EB" fill="#2563EB" fillOpacity={0.6} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                )}
+                <div className={radarData.length >= 2 ? 'mt-4 pt-4 border-t border-border' : ''}>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">By subject / category</p>
+                  <div className="flex flex-wrap gap-3">
+                    {radarData.map((d, i) => (
+                      <div key={i} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/60">
+                        <span className="font-medium">{d.subject}</span>
+                        <span className="text-primary font-semibold">{d.score}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
             ) : (
               <p className="text-muted-foreground text-sm py-8 text-center">Complete a test to see subject-wise performance.</p>
             )}

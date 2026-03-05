@@ -132,11 +132,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUserProgress(prev => {
       const newProgress = { ...prev, ...updates };
       
-      // Update exam readiness based on accuracy and progress
+      // Exam readiness: after 5+ questions, readiness = accuracy (so 80% accuracy unlocks Mock Test)
       const questionsCompleted = newProgress.totalQuestions;
       const accuracy = newProgress.accuracy;
-      const readiness = Math.min(100, Math.floor((questionsCompleted / 50) * accuracy));
-      newProgress.examReadiness = readiness;
+      const readiness = questionsCompleted >= 5
+        ? accuracy
+        : (questionsCompleted / 5) * accuracy;
+      newProgress.examReadiness = Math.min(100, Math.round(readiness));
 
       // Update rank based on readiness
       if (readiness >= 90) newProgress.rank = 'Expert';

@@ -43,7 +43,7 @@ export function Dashboard() {
   const [showFinalUnlock, setShowFinalUnlock] = useState(false);
 
   const mockTestUnlocked = userProgress.examReadiness >= 80;
-  const finalExamUnlocked = userProgress.mockTestsCompleted >= 2 && userProgress.examReadiness >= 90;
+  const finalExamUnlocked = userProgress.mockTestsCompleted >= 1 && userProgress.examReadiness >= 90;
 
   // Check for unlock animations
   useEffect(() => {
@@ -465,7 +465,7 @@ export function Dashboard() {
                         <p className="text-sm text-muted-foreground">
                           {finalExamUnlocked 
                             ? 'Get your certificate!' 
-                            : '2 mock tests + 90% ready'}
+                            : '1 mock test + 90% ready'}
                         </p>
                       </div>
                       <Button 
@@ -480,7 +480,7 @@ export function Dashboard() {
                 </TooltipTrigger>
                 {!finalExamUnlocked && (
                   <TooltipContent>
-                    Complete 2 mock tests and reach 90% readiness
+                    Complete 1 mock test and reach 90% readiness
                   </TooltipContent>
                 )}
               </Tooltip>

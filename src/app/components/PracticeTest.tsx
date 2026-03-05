@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '@/app/context/ExamContext';
 import { Button } from '@/app/components/ui/button';
@@ -63,9 +63,12 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
   const [originalWrongQuestion, setOriginalWrongQuestion] = useState<Question | null>(null);
   const [buildingWeakQueue, setBuildingWeakQueue] = useState(false);
   const [buildingAssessmentQueue, setBuildingAssessmentQueue] = useState(false);
+  /** Every answer in this session (including wrong before GPT replace) so results count mistakes correctly */
+  const sessionAnswerRecordsRef = useRef<Array<{ correct: boolean; difficulty: string; category: string }>>([]);
 
   useEffect(() => {
     if (restoredAssessmentState && restoredAssessmentState.questions.length > 0) {
+      sessionAnswerRecordsRef.current = [];
       const queue = restoredAssessmentState.questions.map((q) => ({
         ...q,
         whyWrong: q.whyWrong || {},
@@ -76,6 +79,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       return;
     }
     if (restoredPracticeState && (restoredPracticeState.questions?.length > 0 || (restoredPracticeState.questionIds && restoredPracticeState.questionIds.length > 0))) {
+      sessionAnswerRecordsRef.current = [];
       // Prefer full questions (includes GPT-generated) so tab switch doesn't lose them
       if (restoredPracticeState.questions && restoredPracticeState.questions.length > 0) {
         const queue = restoredPracticeState.questions.map((q) => ({
@@ -96,6 +100,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       return;
     }
     if (reviewMistakesQuestions && reviewMistakesQuestions.length > 0) {
+      sessionAnswerRecordsRef.current = [];
       setQuestionQueue([...reviewMistakesQuestions]);
       setReviewMistakesQuestions(null);
       setCurrentQuestionIndex(0);
@@ -171,6 +176,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
           }
         }
         if (gptQuestions.length > 0) {
+          sessionAnswerRecordsRef.current = [];
           setQuestionQueue(gptQuestions);
           setCurrentQuestionIndex(0);
         } else {
@@ -197,6 +203,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
         if (weakQuestions.length === 0) {
           setQuestionQueue([...questions]);
         } else {
+          sessionAnswerRecordsRef.current = [];
           try {
             const first = weakQuestions[0];
             const similar = await generateSimilarQuestion(
@@ -227,6 +234,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       return;
     }
     if (questions.length > 0 && questionQueue.length === 0 && !buildingWeakQueue) {
+      sessionAnswerRecordsRef.current = [];
       const list = questionLimit ? questions.slice(0, questionLimit) : [...questions];
       setQuestionQueue(list);
     }
@@ -270,24 +278,23 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setCurrentScreen('dashboard');
   };
   const goToResults = () => {
-    // Build session results from this test only (dynamic charts on Results page)
+    // Build from every answer in this session (including wrong attempts before GPT replace)
+    const records = sessionAnswerRecordsRef.current;
     const byDifficulty: Record<string, { correct: number; total: number }> = {};
     const byCategory: Record<string, { correct: number; total: number }> = {};
     let correct = 0;
-    questionQueue.forEach((q) => {
-      const ans = answeredQuestions.get(q.id);
-      const isCorrect = ans?.correct ?? false;
-      if (isCorrect) correct++;
-      const diff = q.difficulty || 'medium';
+    records.forEach((r) => {
+      if (r.correct) correct++;
+      const diff = r.difficulty || 'medium';
       if (!byDifficulty[diff]) byDifficulty[diff] = { correct: 0, total: 0 };
       byDifficulty[diff].total += 1;
-      if (isCorrect) byDifficulty[diff].correct += 1;
-      const cat = q.category || q.subject || 'General';
+      if (r.correct) byDifficulty[diff].correct += 1;
+      const cat = r.category || 'General';
       if (!byCategory[cat]) byCategory[cat] = { correct: 0, total: 0 };
       byCategory[cat].total += 1;
-      if (isCorrect) byCategory[cat].correct += 1;
+      if (r.correct) byCategory[cat].correct += 1;
     });
-    const total = questionQueue.length;
+    const total = records.length;
     setLastSessionResults({
       total,
       correct,
@@ -359,6 +366,11 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setIsCorrect(correct);
     setShowResult(true);
     answerQuestion(currentQuestion.id, selectedOption, correct);
+    sessionAnswerRecordsRef.current.push({
+      correct,
+      difficulty: currentQuestion.difficulty || 'medium',
+      category: currentQuestion.category || currentQuestion.subject || 'General',
+    });
 
     if (!correct) {
       addMistake(currentQuestion, selectedOption);
