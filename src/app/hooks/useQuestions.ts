@@ -12,6 +12,7 @@ interface SupabaseQuestionRow {
   D: string;
   'Correct Answer': string;
   'Feedback / Explanation': string | null;
+  subject?: string | null;
 }
 
 function parseCorrectAnswerIndex(val: string | null | undefined): number {
@@ -21,7 +22,17 @@ function parseCorrectAnswerIndex(val: string | null | undefined): number {
   return map[letter] ?? 0;
 }
 
+/** Returns true only if all 4 options are non-empty strings. */
+function isCompleteRow(row: SupabaseQuestionRow): boolean {
+  const opts = [row.A, row.B, row.C, row.D];
+  return (
+    Boolean(row.Question && String(row.Question).trim()) &&
+    opts.every((o) => typeof o === 'string' && o.trim().length > 0)
+  );
+}
+
 function mapRowToQuestion(row: SupabaseQuestionRow): Question {
+  const sub = (row.subject && String(row.subject).trim()) || 'General';
   return {
     id: row.id,
     question: row.Question,
@@ -29,8 +40,8 @@ function mapRowToQuestion(row: SupabaseQuestionRow): Question {
     correctAnswer: parseCorrectAnswerIndex(row['Correct Answer']),
     explanation: row['Feedback / Explanation'] || '',
     whyWrong: {},
-    subject: 'General',
-    category: 'General',
+    subject: sub,
+    category: sub,
     difficulty: 'medium',
   };
 }
@@ -49,7 +60,7 @@ export function useQuestions() {
         setError(null);
         const { data, error: fetchError } = await supabase
           .from('questions')
-          .select('id, "Question", "A", "B", "C", "D", "Correct Answer", "Feedback / Explanation"')
+          .select('id, "Question", "A", "B", "C", "D", "Correct Answer", "Feedback / Explanation", subject')
           .order('created_at', { ascending: true });
 
         if (cancelled) return;
@@ -60,7 +71,9 @@ export function useQuestions() {
           return;
         }
 
-        const mapped = (data || []).map(mapRowToQuestion);
+        const mapped = (data || [])
+          .filter(isCompleteRow)
+          .map(mapRowToQuestion);
         setQuestions(mapped);
       } catch (err) {
         if (!cancelled) {

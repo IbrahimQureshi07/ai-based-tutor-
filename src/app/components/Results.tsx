@@ -19,7 +19,16 @@ import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarA
 import { useEffect, useState } from 'react';
 
 export function Results() {
-  const { userProgress, setCurrentScreen, addChatMessage, setChatOpen, lastSessionResults, setStartPracticeWithWeakAreas } = useApp();
+  const {
+    userProgress,
+    setCurrentScreen,
+    addChatMessage,
+    setChatOpen,
+    lastSessionResults,
+    setStartPracticeWithWeakAreas,
+    setSubjectSelectFor,
+    setSelectedPracticeSubject,
+  } = useApp();
   const [hasCheckedUnlock, setHasCheckedUnlock] = useState(false);
 
   // Use last test session for all numbers and charts; fallback to userProgress when no session data
@@ -313,6 +322,7 @@ export function Results() {
             </div>
             <Button
               onClick={() => {
+                setSelectedPracticeSubject(null);
                 setStartPracticeWithWeakAreas(true);
                 setCurrentScreen('practice');
               }}
@@ -343,7 +353,10 @@ export function Results() {
                 <ArrowRight className="w-4 h-4" />
               </Button>
               <Button
-                onClick={() => setCurrentScreen('practice')}
+                onClick={() => {
+                  setSubjectSelectFor('practice');
+                  setCurrentScreen('subjectSelect');
+                }}
                 variant="outline"
                 className="gap-2"
               >

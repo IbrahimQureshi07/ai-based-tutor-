@@ -3,6 +3,7 @@ import { AuthScreen } from '@/app/components/AuthScreen';
 import { Dashboard } from '@/app/components/Dashboard';
 import { PracticeTest } from '@/app/components/PracticeTest';
 import { MockTest } from '@/app/components/MockTest';
+import { SubjectSelect } from '@/app/components/SubjectSelect';
 import { FinalExam } from '@/app/components/FinalExam';
 import { Results } from '@/app/components/Results';
 import { Assessment } from '@/app/components/Assessment';
@@ -38,8 +39,10 @@ function AppContent() {
         return <Dashboard />;
       case 'assessment':
         return <Assessment />;
+      case 'subjectSelect':
+        return <SubjectSelect />;
       case 'practice':
-        return <PracticeTest questionLimit={3} />;
+        return <PracticeTest />;
       case 'mock':
         return <MockTest />;
       case 'final':

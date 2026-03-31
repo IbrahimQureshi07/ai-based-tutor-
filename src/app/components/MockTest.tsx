@@ -1,28 +1,178 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '@/app/context/ExamContext';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
 import { useQuestions } from '@/app/hooks/useQuestions';
-import { Clock, Flag, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
+import { subjectLabelMatches } from '@/app/utils/subjectMatch';
+import { Clock, Flag, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 
 export function MockTest() {
-  const { setCurrentScreen, answerQuestion, updateProgress, userProgress, addChatMessage, setChatOpen, setLastSessionResults } = useApp();
+  const {
+    setCurrentScreen,
+    answerQuestion,
+    updateProgress,
+    userProgress,
+    addChatMessage,
+    setChatOpen,
+    setLastSessionResults,
+    selectedMockSubject,
+    setSelectedMockSubject,
+    setSubjectSelectFor,
+  } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [answers, setAnswers] = useState<Map<number, number>>(new Map());
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
-  const [timeLeft, setTimeLeft] = useState(30 * 60); // 30 minutes
+  const [timeLeft, setTimeLeft] = useState(30 * 60);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [testCompleted, setTestCompleted] = useState(false);
   const [showExitDialog, setShowExitDialog] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
 
-  const currentQuestion = questions[currentQuestionIndex];
-  const progress = questions.length ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0;
+  const testQuestions = useMemo(() => {
+    if (!selectedMockSubject) return questions;
+    return questions.filter((q) => subjectLabelMatches(q, selectedMockSubject));
+  }, [questions, selectedMockSubject]);
+
+  const submitTestRef = useRef<() => void>(() => {});
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getTimerColor = () => {
+    if (timeLeft > 600) return 'text-success';
+    if (timeLeft > 300) return 'text-warning';
+    return 'text-destructive';
+  };
+
+  const submitTest = () => {
+    setTestCompleted(true);
+
+    const byDifficulty: Record<string, { correct: number; total: number }> = {};
+    const byCategory: Record<string, { correct: number; total: number }> = {};
+    let correct = 0;
+    let total = 0;
+    testQuestions.forEach((question, index) => {
+      const userAnswer = answers.get(index);
+      if (userAnswer !== undefined) {
+        total++;
+        const isCorrect = userAnswer === question.correctAnswer;
+        if (isCorrect) correct++;
+        answerQuestion(question.id, userAnswer, isCorrect);
+        const diff = question.difficulty || 'medium';
+        if (!byDifficulty[diff]) byDifficulty[diff] = { correct: 0, total: 0 };
+        byDifficulty[diff].total += 1;
+        if (isCorrect) byDifficulty[diff].correct += 1;
+        const cat = question.category || question.subject || 'General';
+        if (!byCategory[cat]) byCategory[cat] = { correct: 0, total: 0 };
+        byCategory[cat].total += 1;
+        if (isCorrect) byCategory[cat].correct += 1;
+      }
+    });
+
+    setLastSessionResults({
+      total,
+      correct,
+      incorrect: total - correct,
+      byDifficulty,
+      byCategory,
+    });
+
+    updateProgress({
+      mockTestsCompleted: userProgress.mockTestsCompleted + 1,
+    });
+
+    setSelectedMockSubject(null);
+
+    setTimeout(() => {
+      setCurrentScreen('results');
+    }, 2000);
+  };
+
+  submitTestRef.current = submitTest;
+
+  useEffect(() => {
+    if (questionsLoading || testQuestions.length === 0 || testStarted) return;
+    addChatMessage(
+      'ai',
+      "⚠️ This test simulates real exam conditions. You'll have a timer, no hints are allowed, and questions are more challenging. Take your time and stay focused. Good luck!"
+    );
+    setChatOpen(true);
+    setTestStarted(true);
+  }, [questionsLoading, testQuestions.length, testStarted, addChatMessage, setChatOpen]);
+
+  useEffect(() => {
+    if (testCompleted) return;
+    if (questionsLoading || testQuestions.length === 0) return;
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          submitTestRef.current();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [testCompleted, questionsLoading, testQuestions.length]);
+
+  const handleOptionSelect = (index: number) => {
+    setSelectedOption(index);
+    const newAnswers = new Map(answers);
+    newAnswers.set(currentQuestionIndex, index);
+    setAnswers(newAnswers);
+  };
+
+  const handleNext = () => {
+    if (currentQuestionIndex < testQuestions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setSelectedOption(answers.get(currentQuestionIndex + 1) ?? null);
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex(currentQuestionIndex - 1);
+      setSelectedOption(answers.get(currentQuestionIndex - 1) ?? null);
+    }
+  };
+
+  const handleFlag = () => {
+    const newFlagged = new Set(flaggedQuestions);
+    if (newFlagged.has(currentQuestionIndex)) {
+      newFlagged.delete(currentQuestionIndex);
+    } else {
+      newFlagged.add(currentQuestionIndex);
+    }
+    setFlaggedQuestions(newFlagged);
+  };
+
+  const handleSubmit = () => {
+    setShowSubmitDialog(true);
+  };
+
+  const confirmSubmit = () => {
+    setShowSubmitDialog(false);
+    submitTest();
+  };
+
+  const handleExit = () => {
+    setShowExitDialog(true);
+  };
+
+  const confirmExit = () => {
+    setSelectedMockSubject(null);
+    setCurrentScreen('dashboard');
+  };
 
   if (questionsLoading) {
     return (
@@ -54,144 +204,32 @@ export function MockTest() {
       </div>
     );
   }
+  if (testQuestions.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
+        <div className="text-center max-w-md p-6">
+          <p className="text-muted-foreground mb-4">No questions for this topic. Pick another subject.</p>
+          <Button
+            onClick={() => {
+              setSelectedMockSubject(null);
+              setSubjectSelectFor('mock');
+              setCurrentScreen('subjectSelect');
+            }}
+          >
+            Choose subject
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
-  // Show AI warning before starting
-  useEffect(() => {
-    if (!testStarted) {
-      addChatMessage('ai', '⚠️ This test simulates real exam conditions. You\'ll have a timer, no hints are allowed, and questions are more challenging. Take your time and stay focused. Good luck!');
-      setChatOpen(true);
-      setTestStarted(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (testCompleted) return;
-
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          handleAutoSubmit();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [testCompleted]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const getTimerColor = () => {
-    if (timeLeft > 600) return 'text-success';
-    if (timeLeft > 300) return 'text-warning';
-    return 'text-destructive';
-  };
-
-  const handleOptionSelect = (index: number) => {
-    setSelectedOption(index);
-    const newAnswers = new Map(answers);
-    newAnswers.set(currentQuestionIndex, index);
-    setAnswers(newAnswers);
-  };
-
-  const handleNext = () => {
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-      setSelectedOption(answers.get(currentQuestionIndex + 1) ?? null);
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
-      setSelectedOption(answers.get(currentQuestionIndex - 1) ?? null);
-    }
-  };
-
-  const handleFlag = () => {
-    const newFlagged = new Set(flaggedQuestions);
-    if (newFlagged.has(currentQuestionIndex)) {
-      newFlagged.delete(currentQuestionIndex);
-    } else {
-      newFlagged.add(currentQuestionIndex);
-    }
-    setFlaggedQuestions(newFlagged);
-  };
-
-  const handleAutoSubmit = () => {
-    submitTest();
-  };
-
-  const submitTest = () => {
-    setTestCompleted(true);
-
-    const byDifficulty: Record<string, { correct: number; total: number }> = {};
-    const byCategory: Record<string, { correct: number; total: number }> = {};
-    let correct = 0;
-    let total = 0;
-    questions.forEach((question, index) => {
-      const userAnswer = answers.get(index);
-      if (userAnswer !== undefined) {
-        total++;
-        const isCorrect = userAnswer === question.correctAnswer;
-        if (isCorrect) correct++;
-        answerQuestion(question.id, userAnswer, isCorrect);
-        const diff = question.difficulty || 'medium';
-        if (!byDifficulty[diff]) byDifficulty[diff] = { correct: 0, total: 0 };
-        byDifficulty[diff].total += 1;
-        if (isCorrect) byDifficulty[diff].correct += 1;
-        const cat = question.category || question.subject || 'General';
-        if (!byCategory[cat]) byCategory[cat] = { correct: 0, total: 0 };
-        byCategory[cat].total += 1;
-        if (isCorrect) byCategory[cat].correct += 1;
-      }
-    });
-
-    setLastSessionResults({
-      total,
-      correct,
-      incorrect: total - correct,
-      byDifficulty,
-      byCategory,
-    });
-
-    updateProgress({
-      mockTestsCompleted: userProgress.mockTestsCompleted + 1
-    });
-
-    setTimeout(() => {
-      setCurrentScreen('results');
-    }, 2000);
-  };
-
-  const handleSubmit = () => {
-    setShowSubmitDialog(true);
-  };
-
-  const confirmSubmit = () => {
-    setShowSubmitDialog(false);
-    submitTest();
-  };
-
-  const handleExit = () => {
-    setShowExitDialog(true);
-  };
-
-  const confirmExit = () => {
-    setCurrentScreen('dashboard');
-  };
-
+  const currentQuestion = testQuestions[currentQuestionIndex];
+  const progress = testQuestions.length ? ((currentQuestionIndex + 1) / testQuestions.length) * 100 : 0;
   const answeredCount = answers.size;
-  const unansweredCount = questions.length - answeredCount;
+  const unansweredCount = testQuestions.length - answeredCount;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Fullscreen Header */}
       <header className="sticky top-0 z-50 bg-card border-b border-border px-4 py-3">
         <div className="container mx-auto">
           <div className="flex items-center justify-between">
@@ -199,11 +237,9 @@ export function MockTest() {
               <h2 className="font-semibold">Mock Test</h2>
               <div className="hidden md:flex items-center gap-2">
                 <div className="px-3 py-1 rounded-lg bg-muted text-sm">
-                  Question {currentQuestionIndex + 1}/{questions.length}
+                  Question {currentQuestionIndex + 1}/{testQuestions.length}
                 </div>
-                <div className="px-3 py-1 rounded-lg bg-muted text-sm">
-                  Answered: {answeredCount}
-                </div>
+                <div className="px-3 py-1 rounded-lg bg-muted text-sm">Answered: {answeredCount}</div>
                 {flaggedQuestions.size > 0 && (
                   <div className="px-3 py-1 rounded-lg bg-warning/10 text-warning text-sm flex items-center gap-1">
                     <Flag className="w-3 h-3" />
@@ -218,11 +254,7 @@ export function MockTest() {
                 <Clock className="w-5 h-5" />
                 {formatTime(timeLeft)}
               </div>
-              <Button
-                variant="outline"
-                onClick={handleExit}
-                className="gap-2"
-              >
+              <Button variant="outline" onClick={handleExit} className="gap-2">
                 <AlertTriangle className="w-4 h-4" />
                 Exit
               </Button>
@@ -232,7 +264,6 @@ export function MockTest() {
         </div>
       </header>
 
-      {/* Content */}
       <div className="flex-1 container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           <AnimatePresence mode="wait">
@@ -244,7 +275,6 @@ export function MockTest() {
               transition={{ duration: 0.2 }}
             >
               <Card className="p-6 md:p-8 mb-6">
-                {/* Question Header */}
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
@@ -258,9 +288,7 @@ export function MockTest() {
                         </span>
                       )}
                     </div>
-                    <h2 className="text-xl md:text-2xl font-semibold">
-                      {currentQuestion.question}
-                    </h2>
+                    <h2 className="text-xl md:text-2xl font-semibold">{currentQuestion.question}</h2>
                   </div>
                   <Button
                     variant="ghost"
@@ -272,14 +300,9 @@ export function MockTest() {
                   </Button>
                 </div>
 
-                {/* Options */}
                 <div className="space-y-3 mb-6">
                   {currentQuestion.options.map((option, index) => (
-                    <motion.div
-                      key={index}
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
-                    >
+                    <motion.div key={index} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
                       <button
                         onClick={() => handleOptionSelect(index)}
                         className={`w-full text-left p-4 rounded-xl border-2 transition-all ${
@@ -289,11 +312,11 @@ export function MockTest() {
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0 ${
-                            selectedOption === index
-                              ? 'bg-primary text-primary-foreground'
-                              : 'bg-muted'
-                          }`}>
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0 ${
+                              selectedOption === index ? 'bg-primary text-primary-foreground' : 'bg-muted'
+                            }`}
+                          >
                             {String.fromCharCode(65 + index)}
                           </div>
                           <span className="flex-1">{option}</span>
@@ -303,38 +326,27 @@ export function MockTest() {
                   ))}
                 </div>
 
-                {/* Navigation */}
                 <div className="flex items-center justify-between gap-4 pt-4 border-t border-border">
-                  <Button
-                    variant="outline"
-                    onClick={handlePrevious}
-                    disabled={currentQuestionIndex === 0}
-                  >
+                  <Button variant="outline" onClick={handlePrevious} disabled={currentQuestionIndex === 0}>
                     Previous
                   </Button>
 
                   <div className="flex gap-2">
-                    {currentQuestionIndex === questions.length - 1 ? (
-                      <Button
-                        onClick={handleSubmit}
-                        className="bg-success hover:bg-success/90"
-                      >
+                    {currentQuestionIndex === testQuestions.length - 1 ? (
+                      <Button onClick={handleSubmit} className="bg-success hover:bg-success/90">
                         Submit Test
                       </Button>
                     ) : (
-                      <Button onClick={handleNext}>
-                        Next
-                      </Button>
+                      <Button onClick={handleNext}>Next</Button>
                     )}
                   </div>
                 </div>
               </Card>
 
-              {/* Question Navigator */}
               <Card className="p-4">
                 <h3 className="font-semibold mb-3">Question Navigator</h3>
                 <div className="grid grid-cols-5 md:grid-cols-10 gap-2">
-                  {questions.map((_, index) => (
+                  {testQuestions.map((_, index) => (
                     <button
                       key={index}
                       onClick={() => {
@@ -345,10 +357,10 @@ export function MockTest() {
                         index === currentQuestionIndex
                           ? 'bg-primary text-primary-foreground ring-2 ring-primary ring-offset-2'
                           : answers.has(index)
-                          ? 'bg-success/20 text-success border border-success'
-                          : flaggedQuestions.has(index)
-                          ? 'bg-warning/20 text-warning border border-warning'
-                          : 'bg-muted hover:bg-muted/70'
+                            ? 'bg-success/20 text-success border border-success'
+                            : flaggedQuestions.has(index)
+                              ? 'bg-warning/20 text-warning border border-warning'
+                              : 'bg-muted hover:bg-muted/70'
                       }`}
                     >
                       {index + 1}
@@ -375,13 +387,12 @@ export function MockTest() {
         </div>
       </div>
 
-      {/* Submit Confirmation Dialog */}
       <Dialog open={showSubmitDialog} onOpenChange={setShowSubmitDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Submit Mock Test?</DialogTitle>
             <DialogDescription>
-              Are you sure you want to submit? You have answered {answeredCount} out of {questions.length} questions.
+              Are you sure you want to submit? You have answered {answeredCount} out of {testQuestions.length} questions.
               {unansweredCount > 0 && ` ${unansweredCount} questions remain unanswered.`}
             </DialogDescription>
           </DialogHeader>
@@ -389,14 +400,11 @@ export function MockTest() {
             <Button variant="outline" onClick={() => setShowSubmitDialog(false)}>
               Review Answers
             </Button>
-            <Button onClick={confirmSubmit}>
-              Yes, Submit Test
-            </Button>
+            <Button onClick={confirmSubmit}>Yes, Submit Test</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Exit Confirmation Dialog */}
       <Dialog open={showExitDialog} onOpenChange={setShowExitDialog}>
         <DialogContent>
           <DialogHeader>
@@ -419,7 +427,6 @@ export function MockTest() {
         </DialogContent>
       </Dialog>
 
-      {/* Test Completed Animation */}
       {testCompleted && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
           <motion.div
@@ -431,7 +438,7 @@ export function MockTest() {
             <motion.div
               animate={{
                 scale: [1, 1.2, 1],
-                rotate: [0, 360]
+                rotate: [0, 360],
               }}
               transition={{ duration: 1 }}
               className="w-24 h-24 rounded-full bg-success/20 flex items-center justify-center mx-auto mb-4"

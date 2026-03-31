@@ -43,6 +43,15 @@ interface AppContextType {
     byCategory: Record<string, { correct: number; total: number }>;
   } | null;
   setLastSessionResults: (v: AppContextType['lastSessionResults']) => void;
+  /** Which test flow opened the subject picker (Practice vs Mock). */
+  subjectSelectFor: 'practice' | 'mock';
+  setSubjectSelectFor: (v: 'practice' | 'mock') => void;
+  /** Chosen topic for Practice Test (first 25 from sheet for that subject). */
+  selectedPracticeSubject: string | null;
+  setSelectedPracticeSubject: (v: string | null) => void;
+  /** Chosen topic for Mock Test (all questions for that subject). */
+  selectedMockSubject: string | null;
+  setSelectedMockSubject: (v: string | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -68,6 +77,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     byDifficulty: Record<string, { correct: number; total: number }>;
     byCategory: Record<string, { correct: number; total: number }>;
   } | null>(null);
+  const [subjectSelectFor, setSubjectSelectFor] = useState<'practice' | 'mock'>('practice');
+  const [selectedPracticeSubject, setSelectedPracticeSubject] = useState<string | null>(null);
+  const [selectedMockSubject, setSelectedMockSubject] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -224,6 +236,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setRestoredAssessmentState,
         lastSessionResults,
         setLastSessionResults,
+        subjectSelectFor,
+        setSubjectSelectFor,
+        selectedPracticeSubject,
+        setSelectedPracticeSubject,
+        selectedMockSubject,
+        setSelectedMockSubject,
       }}
     >
       {children}

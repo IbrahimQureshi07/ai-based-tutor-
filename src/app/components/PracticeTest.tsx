@@ -5,6 +5,7 @@ import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
 import { Question } from '@/app/data/exam-data';
+import { subjectLabelMatches } from '@/app/utils/subjectMatch';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { getCurrentUserId, saveWrongQuestion, getUserWrongQuestions } from '@/app/services/userWrongQuestions';
 import { generateSimilarQuestion, generateQuestion, generateHint } from '@/app/services/aiService';
@@ -18,6 +19,19 @@ import {
   MessageCircle,
   ChevronRight
 } from 'lucide-react';
+
+/** Topic practice: N random questions from the chosen subject (raise to 25 when ready). */
+const PRACTICE_SUBJECT_QUESTION_LIMIT = 5;
+
+/** Fisher-Yates shuffle — returns a new array, does not mutate original. */
+function shuffleArray<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 
 interface PracticeTestProps {
   /** When set (e.g. from Assessment), only this many questions are shown. */
@@ -45,6 +59,9 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setRestoredAssessmentState,
     setLastSessionResults,
     answeredQuestions,
+    selectedPracticeSubject,
+    setSelectedPracticeSubject,
+    setSubjectSelectFor,
   } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
@@ -63,11 +80,14 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
   const [originalWrongQuestion, setOriginalWrongQuestion] = useState<Question | null>(null);
   const [buildingWeakQueue, setBuildingWeakQueue] = useState(false);
   const [buildingAssessmentQueue, setBuildingAssessmentQueue] = useState(false);
+  /** True when user picked a topic but no rows matched (do not show mixed fallback). */
+  const [subjectPracticeNoMatch, setSubjectPracticeNoMatch] = useState(false);
   /** Every answer in this session (including wrong before GPT replace) so results count mistakes correctly */
   const sessionAnswerRecordsRef = useRef<Array<{ correct: boolean; difficulty: string; category: string }>>([]);
 
   useEffect(() => {
     if (restoredAssessmentState && restoredAssessmentState.questions.length > 0) {
+      setSubjectPracticeNoMatch(false);
       sessionAnswerRecordsRef.current = [];
       const queue = restoredAssessmentState.questions.map((q) => ({
         ...q,
@@ -79,6 +99,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       return;
     }
     if (restoredPracticeState && (restoredPracticeState.questions?.length > 0 || (restoredPracticeState.questionIds && restoredPracticeState.questionIds.length > 0))) {
+      setSubjectPracticeNoMatch(false);
       sessionAnswerRecordsRef.current = [];
       // Prefer full questions (includes GPT-generated) so tab switch doesn't lose them
       if (restoredPracticeState.questions && restoredPracticeState.questions.length > 0) {
@@ -100,6 +121,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       return;
     }
     if (reviewMistakesQuestions && reviewMistakesQuestions.length > 0) {
+      setSubjectPracticeNoMatch(false);
       sessionAnswerRecordsRef.current = [];
       setQuestionQueue([...reviewMistakesQuestions]);
       setReviewMistakesQuestions(null);
@@ -108,6 +130,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     }
     if (questionQueue.length > 0 && !startPracticeWithWeakAreas) return;
     if (assessmentMode && questions.length > 0 && questionQueue.length === 0) {
+      setSubjectPracticeNoMatch(false);
       setBuildingAssessmentQueue(true);
       (async () => {
         const userId = await getCurrentUserId();
@@ -188,6 +211,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       return;
     }
     if (startPracticeWithWeakAreas && questions.length > 0) {
+      setSubjectPracticeNoMatch(false);
       setBuildingWeakQueue(true);
       (async () => {
         const userId = await getCurrentUserId();
@@ -233,12 +257,35 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       })();
       return;
     }
-    if (questions.length > 0 && questionQueue.length === 0 && !buildingWeakQueue) {
+    if (questions.length > 0 && questionQueue.length === 0 && !buildingWeakQueue && !buildingAssessmentQueue) {
       sessionAnswerRecordsRef.current = [];
-      const list = questionLimit ? questions.slice(0, questionLimit) : [...questions];
+      let list: Question[];
+      if (selectedPracticeSubject) {
+        const filtered = questions.filter((q) => subjectLabelMatches(q, selectedPracticeSubject));
+        list = shuffleArray(filtered).slice(0, PRACTICE_SUBJECT_QUESTION_LIMIT);
+        setSubjectPracticeNoMatch(list.length === 0);
+      } else {
+        setSubjectPracticeNoMatch(false);
+        if (questionLimit) {
+          list = shuffleArray(questions).slice(0, questionLimit);
+        } else {
+          list = shuffleArray(questions);
+        }
+      }
       setQuestionQueue(list);
     }
-  }, [questions, questionQueue.length, reviewMistakesQuestions, startPracticeWithWeakAreas, restoredPracticeState, restoredAssessmentState, questionLimit, assessmentMode]);
+  }, [
+    questions,
+    questionQueue.length,
+    reviewMistakesQuestions,
+    startPracticeWithWeakAreas,
+    restoredPracticeState,
+    restoredAssessmentState,
+    questionLimit,
+    assessmentMode,
+    selectedPracticeSubject,
+    buildingAssessmentQueue,
+  ]);
 
   // Clear hint when moving to another question so next hint is fresh
   useEffect(() => {
@@ -275,6 +322,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
   const goToDashboard = () => {
     clearPracticeState();
     clearAssessmentState();
+    setSelectedPracticeSubject(null);
     setCurrentScreen('dashboard');
   };
   const goToResults = () => {
@@ -304,6 +352,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     });
     clearPracticeState();
     clearAssessmentState();
+    setSelectedPracticeSubject(null);
     setCurrentScreen('results');
   };
 
@@ -342,6 +391,33 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     );
   }
   if (questionQueue.length === 0) {
+    if (subjectPracticeNoMatch && selectedPracticeSubject) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5 px-4">
+          <Card className="max-w-md w-full p-8 text-center space-y-4">
+            <p className="text-muted-foreground">
+              No questions found for <span className="font-medium text-foreground">{selectedPracticeSubject}</span>.
+              Check that each row in Supabase has a matching <code className="text-xs bg-muted px-1 rounded">subject</code> value.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              <Button
+                variant="default"
+                onClick={() => {
+                  setSelectedPracticeSubject(null);
+                  setSubjectSelectFor('practice');
+                  setCurrentScreen('subjectSelect');
+                }}
+              >
+                Choose another topic
+              </Button>
+              <Button variant="outline" onClick={goToDashboard}>
+                Dashboard
+              </Button>
+            </div>
+          </Card>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center">

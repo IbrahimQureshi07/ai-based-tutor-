@@ -37,6 +37,8 @@ export function Dashboard() {
     mistakesList,
     setReviewMistakesQuestions,
     setStartPracticeWithWeakAreas,
+    setSubjectSelectFor,
+    setSelectedPracticeSubject,
   } = useApp();
   const [focusMode, setFocusMode] = useState(false);
   const [showMockUnlock, setShowMockUnlock] = useState(false);
@@ -128,9 +130,9 @@ export function Dashboard() {
             </div>
             <div className="flex items-center gap-2">
               <Button
-                variant="ghost"
                 size="icon"
-                onClick={toggleTheme}
+               variant="ghost"
+                 onClick={toggleTheme}
                 className="rounded-full"
               >
                 {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
@@ -279,6 +281,7 @@ export function Dashboard() {
                     if (!userProgress.completedAssessment) {
                       setCurrentScreen('assessment');
                     } else {
+                      setSelectedPracticeSubject(null);
                       setStartPracticeWithWeakAreas(true);
                       setCurrentScreen('practice');
                     }
@@ -352,7 +355,10 @@ export function Dashboard() {
           >
             <Card 
               className="p-6 cursor-pointer transition-all hover:shadow-xl bg-card hover:border-primary/50"
-              onClick={() => setCurrentScreen('practice')}
+              onClick={() => {
+                setSubjectSelectFor('practice');
+                setCurrentScreen('subjectSelect');
+              }}
             >
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -389,7 +395,12 @@ export function Dashboard() {
                         ? 'cursor-pointer hover:shadow-xl bg-card hover:border-primary/50'
                         : 'opacity-60 cursor-not-allowed backdrop-blur-sm'
                     }`}
-                    onClick={() => mockTestUnlocked && setCurrentScreen('mock')}
+                    onClick={() => {
+                      if (mockTestUnlocked) {
+                        setSubjectSelectFor('mock');
+                        setCurrentScreen('subjectSelect');
+                      }
+                    }}
                   >
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
@@ -518,6 +529,7 @@ export function Dashboard() {
                   <Button
                     variant="destructive"
                     onClick={() => {
+                      setSelectedPracticeSubject(null);
                       setReviewMistakesQuestions(mistakesList.map((m) => m.question));
                       setCurrentScreen('practice');
                     }}
