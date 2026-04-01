@@ -58,22 +58,33 @@ export function useQuestions() {
       try {
         setLoading(true);
         setError(null);
-        const { data, error: fetchError } = await supabase
-          .from('questions')
-          .select('id, "Question", "A", "B", "C", "D", "Correct Answer", "Feedback / Explanation", subject')
-          .order('created_at', { ascending: true });
+        // PostgREST default max ~1000 rows per request. Without paging, subjects added
+        // later (e.g. A6, B5) never reach the client when total rows exceed that cap.
+        const pageSize = 1000;
+        const rows: SupabaseQuestionRow[] = [];
+        let from = 0;
+        for (;;) {
+          const { data, error: fetchError } = await supabase
+            .from('questions')
+            .select('id, "Question", "A", "B", "C", "D", "Correct Answer", "Feedback / Explanation", subject')
+            .order('created_at', { ascending: true })
+            .range(from, from + pageSize - 1);
 
-        if (cancelled) return;
+          if (cancelled) return;
 
-        if (fetchError) {
-          setError(fetchError.message);
-          setQuestions([]);
-          return;
+          if (fetchError) {
+            setError(fetchError.message);
+            setQuestions([]);
+            return;
+          }
+
+          const chunk = data || [];
+          rows.push(...(chunk as SupabaseQuestionRow[]));
+          if (chunk.length < pageSize) break;
+          from += pageSize;
         }
 
-        const mapped = (data || [])
-          .filter(isCompleteRow)
-          .map(mapRowToQuestion);
+        const mapped = rows.filter(isCompleteRow).map(mapRowToQuestion);
         setQuestions(mapped);
       } catch (err) {
         if (!cancelled) {
