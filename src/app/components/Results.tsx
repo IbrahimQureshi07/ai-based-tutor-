@@ -13,10 +13,78 @@ import {
   AlertCircle,
   CheckCircle2,
   Share2,
-  Unlock
+  ChevronRight,
+  Lock,
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { useEffect, useState } from 'react';
+import { SUBJECTS, type SubjectMeta } from '@/app/data/subjects';
+
+function TopicPracticeCard({
+  s,
+  delayIndex,
+  done,
+  onPick,
+}: {
+  s: SubjectMeta;
+  delayIndex: number;
+  done: boolean;
+  onPick: () => void;
+}) {
+  const anim = {
+    initial: { opacity: 0, y: 10 },
+    animate: { opacity: 1, y: 0 },
+    transition: { delay: 0.05 * delayIndex },
+  };
+
+  const inner = (
+    <>
+      <div className="flex items-center gap-3">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${s.iconBgClass}`}>
+          <s.Icon className="w-4 h-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between gap-1">
+            <p className="font-semibold text-xs leading-snug truncate">{s.label}</p>
+            {done ? (
+              <span className="flex items-center gap-1 flex-shrink-0 text-muted-foreground" title="Completed for this session">
+                <Lock className="w-3.5 h-3.5" aria-hidden />
+                <span className="text-[10px] font-semibold uppercase tracking-wide">Locked</span>
+              </span>
+            ) : (
+              <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground mt-0.5 truncate">{s.desc}</p>
+        </div>
+      </div>
+    </>
+  );
+
+  if (done) {
+    return (
+      <motion.div
+        {...anim}
+        className={`w-full text-left p-3 rounded-xl border-2 transition-all duration-200 relative border-success/30 bg-muted/30 opacity-80 cursor-not-allowed`}
+        aria-disabled
+        title="Completed — choose another topic to continue"
+      >
+        {inner}
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.button
+      {...anim}
+      type="button"
+      onClick={onPick}
+      className={`w-full text-left p-3 rounded-xl border-2 transition-all duration-200 group relative bg-card hover:shadow-md ${s.accentClass}`}
+    >
+      {inner}
+    </motion.button>
+  );
+}
 
 export function Results() {
   const {
@@ -28,6 +96,7 @@ export function Results() {
     setStartPracticeWithWeakAreas,
     setSubjectSelectFor,
     setSelectedPracticeSubject,
+    completedPracticeSubjects,
   } = useApp();
   const [hasCheckedUnlock, setHasCheckedUnlock] = useState(false);
 
@@ -370,6 +439,75 @@ export function Results() {
                 <Share2 className="w-4 h-4" />
                 Share Results
               </Button>
+            </div>
+          </Card>
+        </motion.div>
+
+        {/* Next Topics to Practice */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.65 }}
+        >
+          <Card className="p-6">
+            <h3 className="font-semibold mb-1 flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-primary" />
+              Practice by Topic
+            </h3>
+            <p className="text-sm text-muted-foreground mb-5">
+              {completedPracticeSubjects.length === 0
+                ? 'Pick a topic to start subject-wise practice.'
+                : completedPracticeSubjects.length >= SUBJECTS.length
+                ? 'All topics completed this session. Completed cards stay locked here.'
+                : `${SUBJECTS.length - completedPracticeSubjects.length} topic${SUBJECTS.length - completedPracticeSubjects.length > 1 ? 's' : ''} remaining — keep going!`}
+            </p>
+
+            {/* Section A */}
+            <div className="mb-5">
+              <p className="text-xs font-bold text-primary uppercase tracking-wider mb-3 px-1">
+                Section A — National Topics
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {SUBJECTS.filter((s) => s.section === 'A').map((s, i) => {
+                  const done = completedPracticeSubjects.includes(s.key);
+                  return (
+                    <TopicPracticeCard
+                      key={s.key}
+                      s={s}
+                      delayIndex={i}
+                      done={done}
+                      onPick={() => {
+                        setSelectedPracticeSubject(s.key);
+                        setCurrentScreen('practice');
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section B */}
+            <div>
+              <p className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-3 px-1">
+                Section B — State Topics
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {SUBJECTS.filter((s) => s.section === 'B').map((s, i) => {
+                  const done = completedPracticeSubjects.includes(s.key);
+                  return (
+                    <TopicPracticeCard
+                      key={s.key}
+                      s={s}
+                      delayIndex={i + 6}
+                      done={done}
+                      onPick={() => {
+                        setSelectedPracticeSubject(s.key);
+                        setCurrentScreen('practice');
+                      }}
+                    />
+                  );
+                })}
+              </div>
             </div>
           </Card>
         </motion.div>

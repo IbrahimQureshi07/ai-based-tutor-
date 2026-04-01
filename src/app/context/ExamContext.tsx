@@ -52,6 +52,9 @@ interface AppContextType {
   /** Chosen topic for Mock Test (all questions for that subject). */
   selectedMockSubject: string | null;
   setSelectedMockSubject: (v: string | null) => void;
+  /** Subjects whose practice test has been fully completed this session. */
+  completedPracticeSubjects: string[];
+  markPracticeSubjectDone: (subject: string) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -80,6 +83,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [subjectSelectFor, setSubjectSelectFor] = useState<'practice' | 'mock'>('practice');
   const [selectedPracticeSubject, setSelectedPracticeSubject] = useState<string | null>(null);
   const [selectedMockSubject, setSelectedMockSubject] = useState<string | null>(null);
+  const [completedPracticeSubjects, setCompletedPracticeSubjects] = useState<string[]>([]);
+
+  const markPracticeSubjectDone = (subject: string) => {
+    setCompletedPracticeSubjects((prev) =>
+      prev.includes(subject) ? prev : [...prev, subject]
+    );
+  };
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -242,6 +252,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSelectedPracticeSubject,
         selectedMockSubject,
         setSelectedMockSubject,
+        completedPracticeSubjects,
+        markPracticeSubjectDone,
       }}
     >
       {children}

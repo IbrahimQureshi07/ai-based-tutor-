@@ -62,6 +62,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     selectedPracticeSubject,
     setSelectedPracticeSubject,
     setSubjectSelectFor,
+    markPracticeSubjectDone,
   } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
@@ -352,6 +353,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     });
     clearPracticeState();
     clearAssessmentState();
+    if (selectedPracticeSubject) markPracticeSubjectDone(selectedPracticeSubject);
     setSelectedPracticeSubject(null);
     setCurrentScreen('results');
   };
