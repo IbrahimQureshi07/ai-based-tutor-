@@ -21,6 +21,7 @@ export function MockTest() {
     selectedMockSubject,
     setSelectedMockSubject,
     setSubjectSelectFor,
+    setActiveTutorMcq,
   } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -124,6 +125,42 @@ export function MockTest() {
 
     return () => clearInterval(timer);
   }, [testCompleted, questionsLoading, testQuestions.length]);
+
+  useEffect(() => {
+    if (
+      questionsLoading ||
+      questionsError ||
+      questions.length === 0 ||
+      testQuestions.length === 0 ||
+      !testStarted ||
+      testCompleted
+    ) {
+      setActiveTutorMcq(null);
+      return;
+    }
+    const q = testQuestions[currentQuestionIndex];
+    if (!q) {
+      setActiveTutorMcq(null);
+      return;
+    }
+    setActiveTutorMcq({
+      question: q.question,
+      options: q.options,
+      correctIndex: q.correctAnswer,
+      explanation: q.explanation,
+      subject: q.subject || q.category,
+    });
+    return () => setActiveTutorMcq(null);
+  }, [
+    questionsLoading,
+    questionsError,
+    questions.length,
+    testQuestions,
+    currentQuestionIndex,
+    testStarted,
+    testCompleted,
+    setActiveTutorMcq,
+  ]);
 
   const handleOptionSelect = (index: number) => {
     setSelectedOption(index);

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, ReactNode, useEffect } from 'react
 import { UserProgress, initialUserProgress, Question } from '@/app/data/exam-data';
 import { supabase } from '@/app/services/supabase';
 import { loadPracticeState, loadAssessmentState } from '@/app/services/practiceStateStorage';
+import type { TutorActiveMcq } from '@/app/utils/tutorOfficialContext';
 
 interface AppContextType {
   userProgress: UserProgress;
@@ -41,8 +42,16 @@ interface AppContextType {
     incorrect: number;
     byDifficulty: Record<string, { correct: number; total: number }>;
     byCategory: Record<string, { correct: number; total: number }>;
+    /** Bank question IDs missed on first try (practice) — same list drives weak-area practice from Results */
+    weakBankQuestionIds?: string[];
   } | null;
   setLastSessionResults: (v: AppContextType['lastSessionResults']) => void;
+  /**
+   * Set when opening weak practice from Results (weak bank IDs from that session).
+   * null = opened from Dashboard / use historical DB wrongs.
+   */
+  pendingWeakPracticeBankIds: string[] | null;
+  setPendingWeakPracticeBankIds: (v: string[] | null) => void;
   /** Which test flow opened the subject picker (Practice vs Mock). */
   subjectSelectFor: 'practice' | 'mock';
   setSubjectSelectFor: (v: 'practice' | 'mock') => void;
@@ -55,6 +64,9 @@ interface AppContextType {
   /** Subjects whose practice test has been fully completed this session. */
   completedPracticeSubjects: string[];
   markPracticeSubjectDone: (subject: string) => void;
+  /** MCQ currently on screen (practice/mock) — AI tutor must match this key. */
+  activeTutorMcq: TutorActiveMcq | null;
+  setActiveTutorMcq: (v: TutorActiveMcq | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -79,7 +91,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     incorrect: number;
     byDifficulty: Record<string, { correct: number; total: number }>;
     byCategory: Record<string, { correct: number; total: number }>;
+    weakBankQuestionIds?: string[];
   } | null>(null);
+  const [pendingWeakPracticeBankIds, setPendingWeakPracticeBankIds] = useState<string[] | null>(null);
   const [subjectSelectFor, setSubjectSelectFor] = useState<'practice' | 'mock'>('practice');
   const [selectedPracticeSubject, setSelectedPracticeSubject] = useState<string | null>(null);
   const [selectedMockSubject, setSelectedMockSubject] = useState<string | null>(null);
@@ -90,6 +104,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       prev.includes(subject) ? prev : [...prev, subject]
     );
   };
+
+  const [activeTutorMcq, setActiveTutorMcq] = useState<TutorActiveMcq | null>(null);
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
@@ -246,6 +262,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setRestoredAssessmentState,
         lastSessionResults,
         setLastSessionResults,
+        pendingWeakPracticeBankIds,
+        setPendingWeakPracticeBankIds,
         subjectSelectFor,
         setSubjectSelectFor,
         selectedPracticeSubject,
@@ -254,6 +272,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSelectedMockSubject,
         completedPracticeSubjects,
         markPracticeSubjectDone,
+        activeTutorMcq,
+        setActiveTutorMcq,
       }}
     >
       {children}

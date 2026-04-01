@@ -8,6 +8,8 @@
  * - Adaptive learning suggestions
  */
 
+import type { TutorActiveMcq } from '@/app/utils/tutorOfficialContext';
+
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -89,6 +91,10 @@ export async function getChatbotResponse(
   context?: {
     currentSubject?: string;
     currentQuestion?: string;
+    /** Full MCQ on screen — model must not contradict this key. */
+    activeMcq?: TutorActiveMcq;
+    /** Keyword-matched rows from the loaded question bank. */
+    officialBankSnippets?: string;
     userProgress?: {
       accuracy: number;
       weakAreas: string[];
@@ -98,34 +104,74 @@ export async function getChatbotResponse(
     conversationHistory?: Array<{ role: 'user' | 'ai'; content: string }>;
   }
 ): Promise<string> {
-  const systemPrompt = `You are an AI tutor helping students prepare for state-level exams. 
-You are friendly, encouraging, and explain concepts clearly in simple language.
-You help students understand their mistakes and guide them to improve.
-Always respond in a helpful, educational manner. Keep responses concise (2-3 sentences max unless explaining a complex concept).
-If the student asks about a specific question or topic, provide detailed explanations.
-Important: Use the conversation history. When the student says things like "explain more", "I didn't understand", "in detail please", or "dubarah batao", always refer back to the topic or question you were just discussing—do not ask them to specify the topic again.`;
+  const letters = ['A', 'B', 'C', 'D'] as const;
+  const activeBlock = context?.activeMcq
+    ? `
+## ACTIVE PRACTICE QUESTION (highest priority — authoritative for this app)
+Subject: ${context.activeMcq.subject || 'General'}
+Question: ${context.activeMcq.question}
+A) ${context.activeMcq.options[0] ?? ''}
+B) ${context.activeMcq.options[1] ?? ''}
+C) ${context.activeMcq.options[2] ?? ''}
+D) ${context.activeMcq.options[3] ?? ''}
+OFFICIAL CORRECT ANSWER FOR THIS EXAM: ${letters[context.activeMcq.correctIndex] ?? '?'}
+Official explanation from the course: ${context.activeMcq.explanation}
 
-  const contextInfo = context ? `
+Rules for this block: You MUST agree with the official letter and explanation above for exam purposes. Never tell the student a different option is correct for this question. You may clarify concepts in simple language only in ways that support the official key.
+`
+    : '';
+
+  const bankBlock =
+    context?.officialBankSnippets && context.officialBankSnippets.trim().length > 0
+      ? `
+## Official course question bank (retrieved snippets — authoritative when they apply)
+The following items come from the student's licensed prep database. If the student's message relates to any snippet, treat OFFICIAL CORRECT and the course explanation as the exam truth. Do not contradict them. If none apply, you may answer from general real estate knowledge and briefly note you are giving general tutoring (not a specific bank item).
+
+${context.officialBankSnippets}
+`
+      : '';
+
+  const systemPrompt = `You are an AI tutor for real estate exam prep.
+You are friendly, clear, and educational. Use **bold** sparingly for key terms only (markdown is supported).
+When official bank data or the active question is provided above, those answers are the exam authority—never disagree with the keyed letter.
+For unrelated real estate topics with no matching bank item, answer helpfully from general knowledge as a tutor.
+Keep answers focused; use 2–4 short paragraphs or bullet lists when it helps clarity.
+Use conversation history: for "explain more", "why", or "dubarah", continue the same topic without asking what topic they mean.`;
+
+  const contextInfo = context
+    ? `
 Student Context:
 - Current Subject: ${context.currentSubject || 'Not specified'}
 - Accuracy: ${context.userProgress?.accuracy || 0}%
 - Level: ${context.userProgress?.level || 1}
 - Weak Areas: ${context.userProgress?.weakAreas?.join(', ') || 'None'}
-${context.currentQuestion ? `- Current Question: ${context.currentQuestion}` : ''}
-` : '';
+${context.currentQuestion && !context.activeMcq ? `- Question text (legacy): ${context.currentQuestion}` : ''}
+`
+    : '';
 
   const history = (context?.conversationHistory ?? []).slice(-20).map((m) => ({
     role: (m.role === 'ai' ? 'assistant' : m.role) as 'user' | 'assistant' | 'system',
     content: m.content,
   }));
 
+  const systemBody = [systemPrompt, contextInfo, activeBlock, bankBlock].filter(Boolean).join('\n');
+
+  const lastTurn = history[history.length - 1];
+  const historyAlreadyHasThisUser =
+    lastTurn?.role === 'user' && lastTurn.content === userMessage;
+
   const messages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt + contextInfo },
+    { role: 'system', content: systemBody },
     ...history,
-    { role: 'user', content: userMessage },
+    ...(historyAlreadyHasThisUser ? [] : [{ role: 'user' as const, content: userMessage }]),
   ];
 
-  return await callOpenAI(messages, 0.7, 300);
+  const hasAuthority = Boolean(context?.activeMcq) || Boolean(context?.officialBankSnippets?.trim());
+  const temperature = hasAuthority ? 0.3 : 0.65;
+  const bankLen = context?.officialBankSnippets?.length ?? 0;
+  const maxTokens = bankLen > 2500 ? 900 : bankLen > 1200 ? 750 : 650;
+
+  return await callOpenAI(messages, temperature, maxTokens);
 }
 
 /**

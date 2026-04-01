@@ -9,7 +9,7 @@ import { Trophy, Clock, AlertTriangle, Award, Download, Share2 } from 'lucide-re
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 
 export function FinalExam() {
-  const { setCurrentScreen, answerQuestion, updateProgress, userProgress, addChatMessage, setChatOpen, setLastSessionResults } = useApp();
+  const { setCurrentScreen, answerQuestion, updateProgress, userProgress, addChatMessage, setChatOpen, setLastSessionResults, setActiveTutorMcq } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -80,6 +80,34 @@ export function FinalExam() {
 
     return () => clearInterval(timer);
   }, [testCompleted]);
+
+  useEffect(() => {
+    if (questionsLoading || questionsError || questions.length === 0 || testCompleted || !testStarted) {
+      setActiveTutorMcq(null);
+      return;
+    }
+    const q = questions[currentQuestionIndex];
+    if (!q) {
+      setActiveTutorMcq(null);
+      return;
+    }
+    setActiveTutorMcq({
+      question: q.question,
+      options: q.options,
+      correctIndex: q.correctAnswer,
+      explanation: q.explanation,
+      subject: q.subject || q.category,
+    });
+    return () => setActiveTutorMcq(null);
+  }, [
+    questionsLoading,
+    questionsError,
+    questions.length,
+    currentQuestionIndex,
+    testCompleted,
+    testStarted,
+    setActiveTutorMcq,
+  ]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

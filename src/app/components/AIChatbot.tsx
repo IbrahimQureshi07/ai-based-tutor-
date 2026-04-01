@@ -7,6 +7,9 @@ import { MessageCircle, X, Send, Sparkles, AlertCircle } from 'lucide-react';
 import { ScrollArea } from '@/app/components/ui/scroll-area';
 import { getChatbotResponse } from '@/app/services/aiService';
 import { toast } from 'sonner';
+import { useQuestions } from '@/app/hooks/useQuestions';
+import { buildOfficialBankSnippets } from '@/app/utils/tutorOfficialContext';
+import { ChatMarkdown } from '@/app/components/ChatMarkdown';
 
 const suggestedPrompts = [
   "Explain this concept",
@@ -18,7 +21,8 @@ const suggestedPrompts = [
 ];
 
 export function AIChatbot() {
-  const { chatOpen, setChatOpen, chatMessages, addChatMessage, userProgress } = useApp();
+  const { chatOpen, setChatOpen, chatMessages, addChatMessage, userProgress, activeTutorMcq } = useApp();
+  const { questions } = useQuestions();
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [apiError, setApiError] = useState(false);
@@ -32,6 +36,22 @@ export function AIChatbot() {
     scrollToBottom();
   }, [chatMessages]);
 
+  const buildChatContext = (userMessage: string, historyBeforeUser: typeof chatMessages) => {
+    const convoText = [...historyBeforeUser.map((m) => m.content), userMessage].join(' ');
+    const officialBankSnippets = buildOfficialBankSnippets(questions, userMessage, convoText, 8);
+    return {
+      activeMcq: activeTutorMcq ?? undefined,
+      officialBankSnippets,
+      currentSubject: activeTutorMcq?.subject,
+      currentQuestion: activeTutorMcq?.question,
+    };
+  };
+
+  const historyForApi = (latestUserText: string) => [
+    ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user' as const, content: latestUserText },
+  ];
+
   const handleSend = async () => {
     if (!input.trim() || isTyping) return;
 
@@ -42,14 +62,15 @@ export function AIChatbot() {
     setApiError(false);
 
     try {
-      const conversationHistory = chatMessages.map((m) => ({ role: m.role, content: m.content }));
+      const ctx = buildChatContext(userMessage, chatMessages);
       const response = await getChatbotResponse(userMessage, {
+        ...ctx,
         userProgress: {
           accuracy: userProgress.accuracy,
           weakAreas: userProgress.weakAreas,
           level: userProgress.level,
         },
-        conversationHistory,
+        conversationHistory: historyForApi(userMessage),
       });
       
       addChatMessage('ai', response);
@@ -79,14 +100,15 @@ export function AIChatbot() {
     setApiError(false);
 
     try {
-      const conversationHistory = chatMessages.map((m) => ({ role: m.role, content: m.content }));
+      const ctx = buildChatContext(prompt, chatMessages);
       const response = await getChatbotResponse(prompt, {
+        ...ctx,
         userProgress: {
           accuracy: userProgress.accuracy,
           weakAreas: userProgress.weakAreas,
           level: userProgress.level,
         },
-        conversationHistory,
+        conversationHistory: historyForApi(prompt),
       });
       
       addChatMessage('ai', response);
@@ -227,7 +249,11 @@ export function AIChatbot() {
                           : 'bg-muted'
                       }`}
                     >
-                      <p className="text-sm">{message.content}</p>
+                      {message.role === 'user' ? (
+                        <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                      ) : (
+                        <ChatMarkdown content={message.content} />
+                      )}
                       <p className="text-xs opacity-70 mt-1">
                         {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>

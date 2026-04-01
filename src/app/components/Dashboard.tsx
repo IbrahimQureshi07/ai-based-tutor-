@@ -37,6 +37,7 @@ export function Dashboard() {
     mistakesList,
     setReviewMistakesQuestions,
     setStartPracticeWithWeakAreas,
+    setPendingWeakPracticeBankIds,
     setSubjectSelectFor,
     setSelectedPracticeSubject,
   } = useApp();
@@ -282,6 +283,7 @@ export function Dashboard() {
                       setCurrentScreen('assessment');
                     } else {
                       setSelectedPracticeSubject(null);
+                      setPendingWeakPracticeBankIds(null);
                       setStartPracticeWithWeakAreas(true);
                       setCurrentScreen('practice');
                     }

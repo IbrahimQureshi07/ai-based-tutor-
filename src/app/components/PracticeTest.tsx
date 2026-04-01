@@ -6,6 +6,7 @@ import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
 import { Question } from '@/app/data/exam-data';
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
+import { buildOfficialBankSnippets } from '@/app/utils/tutorOfficialContext';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { getCurrentUserId, saveWrongQuestion, getUserWrongQuestions } from '@/app/services/userWrongQuestions';
 import { generateSimilarQuestion, generateQuestion, generateHint } from '@/app/services/aiService';
@@ -47,12 +48,15 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     userProgress,
     updateProgress,
     setChatOpen,
+    chatMessages,
     addChatMessage,
     addMistake,
     reviewMistakesQuestions,
     setReviewMistakesQuestions,
     startPracticeWithWeakAreas,
     setStartPracticeWithWeakAreas,
+    pendingWeakPracticeBankIds,
+    setPendingWeakPracticeBankIds,
     restoredPracticeState,
     setRestoredPracticeState,
     restoredAssessmentState,
@@ -63,6 +67,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setSelectedPracticeSubject,
     setSubjectSelectFor,
     markPracticeSubjectDone,
+    setActiveTutorMcq,
   } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [questionQueue, setQuestionQueue] = useState<Question[]>([]);
@@ -83,17 +88,27 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
   const [buildingAssessmentQueue, setBuildingAssessmentQueue] = useState(false);
   /** True when user picked a topic but no rows matched (do not show mixed fallback). */
   const [subjectPracticeNoMatch, setSubjectPracticeNoMatch] = useState(false);
-  /** Every answer in this session (including wrong before GPT replace) so results count mistakes correctly */
-  const sessionAnswerRecordsRef = useRef<Array<{ correct: boolean; difficulty: string; category: string }>>([]);
+  /** Number of test slots when session started (matches Results "Questions" total). */
+  const initialPracticeSlotCountRef = useRef(0);
+  /** First submit only per slot index — drives Results correct/incorrect & weak areas. */
+  const firstTryBySlotRef = useRef(new Map<number, { correct: boolean; category: string; difficulty: string }>());
+  const wrongBankIdsSessionRef = useRef(new Set<string>());
+
+  const resetOutcomeTracking = () => {
+    firstTryBySlotRef.current = new Map();
+    wrongBankIdsSessionRef.current = new Set();
+    initialPracticeSlotCountRef.current = 0;
+  };
 
   useEffect(() => {
     if (restoredAssessmentState && restoredAssessmentState.questions.length > 0) {
       setSubjectPracticeNoMatch(false);
-      sessionAnswerRecordsRef.current = [];
+      resetOutcomeTracking();
       const queue = restoredAssessmentState.questions.map((q) => ({
         ...q,
         whyWrong: q.whyWrong || {},
       })) as Question[];
+      initialPracticeSlotCountRef.current = queue.length;
       setQuestionQueue(queue);
       setCurrentQuestionIndex(Math.min(restoredAssessmentState.currentIndex, Math.max(0, queue.length - 1)));
       setRestoredAssessmentState(null);
@@ -101,13 +116,14 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     }
     if (restoredPracticeState && (restoredPracticeState.questions?.length > 0 || (restoredPracticeState.questionIds && restoredPracticeState.questionIds.length > 0))) {
       setSubjectPracticeNoMatch(false);
-      sessionAnswerRecordsRef.current = [];
+      resetOutcomeTracking();
       // Prefer full questions (includes GPT-generated) so tab switch doesn't lose them
       if (restoredPracticeState.questions && restoredPracticeState.questions.length > 0) {
         const queue = restoredPracticeState.questions.map((q) => ({
           ...q,
           whyWrong: q.whyWrong || {},
         })) as Question[];
+        initialPracticeSlotCountRef.current = queue.length;
         setQuestionQueue(queue);
         setCurrentQuestionIndex(Math.min(restoredPracticeState.currentIndex, Math.max(0, queue.length - 1)));
       } else if (restoredPracticeState.questionIds && questions.length > 0) {
@@ -115,6 +131,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
           .map((id) => questions.find((q) => q.id === id))
           .filter((q): q is Question => q != null);
         const queue = ordered.length > 0 ? ordered : [...questions];
+        initialPracticeSlotCountRef.current = queue.length;
         setQuestionQueue(queue);
         setCurrentQuestionIndex(Math.min(restoredPracticeState.currentIndex, Math.max(0, queue.length - 1)));
       }
@@ -123,7 +140,8 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     }
     if (reviewMistakesQuestions && reviewMistakesQuestions.length > 0) {
       setSubjectPracticeNoMatch(false);
-      sessionAnswerRecordsRef.current = [];
+      resetOutcomeTracking();
+      initialPracticeSlotCountRef.current = reviewMistakesQuestions.length;
       setQuestionQueue([...reviewMistakesQuestions]);
       setReviewMistakesQuestions(null);
       setCurrentQuestionIndex(0);
@@ -200,11 +218,14 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
           }
         }
         if (gptQuestions.length > 0) {
-          sessionAnswerRecordsRef.current = [];
+          resetOutcomeTracking();
+          initialPracticeSlotCountRef.current = gptQuestions.length;
           setQuestionQueue(gptQuestions);
           setCurrentQuestionIndex(0);
         } else {
+          resetOutcomeTracking();
           const list = questions.slice(0, 10);
+          initialPracticeSlotCountRef.current = list.length;
           setQuestionQueue(list);
         }
         setBuildingAssessmentQueue(false);
@@ -215,51 +236,94 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       setSubjectPracticeNoMatch(false);
       setBuildingWeakQueue(true);
       (async () => {
+        const sessionBankIds = pendingWeakPracticeBankIds;
         const userId = await getCurrentUserId();
         setStartPracticeWithWeakAreas(false);
-        if (!userId) {
-          setQuestionQueue([...questions]);
+        setPendingWeakPracticeBankIds(null);
+        resetOutcomeTracking();
+
+        const fillToLimit = async (bankQs: Question[]): Promise<Question[]> => {
+          const cap = PRACTICE_SUBJECT_QUESTION_LIMIT;
+          const base = bankQs.slice(0, cap);
+          if (base.length === 0) {
+            return shuffleArray(questions).slice(0, cap);
+          }
+          const need = Math.max(0, cap - base.length);
+          if (need === 0) return base;
+          const template = base[0];
+          const extra: Question[] = [];
+          for (let i = 0; i < need; i++) {
+            try {
+              const similar = await generateSimilarQuestion(
+                template.question,
+                template.subject || template.category,
+                template.difficulty || 'medium'
+              );
+              extra.push({
+                id: `similar-weak-${Date.now()}-${i}`,
+                question: similar.question,
+                options: similar.options,
+                correctAnswer: similar.correctAnswer,
+                explanation: similar.explanation,
+                whyWrong: {},
+                subject: similar.category,
+                category: similar.category,
+                difficulty: template.difficulty || 'medium',
+              });
+            } catch {
+              /* skip slot */
+            }
+          }
+          return [...base, ...extra].slice(0, cap);
+        };
+
+        if (sessionBankIds !== null && sessionBankIds.length > 0) {
+          const bankQs = sessionBankIds
+            .map((id) => questions.find((q) => q.id === id))
+            .filter((q): q is Question => q != null);
+          const finalQ = await fillToLimit(bankQs);
+          initialPracticeSlotCountRef.current = finalQ.length;
+          setQuestionQueue(finalQ);
+          setCurrentQuestionIndex(0);
           setBuildingWeakQueue(false);
           return;
         }
+
+        if (sessionBankIds !== null && sessionBankIds.length === 0) {
+          const list = shuffleArray(questions).slice(0, PRACTICE_SUBJECT_QUESTION_LIMIT);
+          initialPracticeSlotCountRef.current = list.length;
+          setQuestionQueue(list);
+          setCurrentQuestionIndex(0);
+          setBuildingWeakQueue(false);
+          return;
+        }
+
+        if (!userId) {
+          const list = shuffleArray(questions).slice(0, PRACTICE_SUBJECT_QUESTION_LIMIT);
+          initialPracticeSlotCountRef.current = list.length;
+          setQuestionQueue(list);
+          setCurrentQuestionIndex(0);
+          setBuildingWeakQueue(false);
+          return;
+        }
+
         const wrongRows = await getUserWrongQuestions(userId);
         const wrongIds = new Set(wrongRows.map((r) => r.question_id));
-        let weakQuestions = questions.filter((q) => wrongIds.has(q.id));
-        if (weakQuestions.length === 0) {
-          setQuestionQueue([...questions]);
-        } else {
-          sessionAnswerRecordsRef.current = [];
-          try {
-            const first = weakQuestions[0];
-            const similar = await generateSimilarQuestion(
-              first.question,
-              first.subject || first.category,
-              first.difficulty
-            );
-            const gptQuestion: Question = {
-              id: `similar-${Date.now()}`,
-              question: similar.question,
-              options: similar.options,
-              correctAnswer: similar.correctAnswer,
-              explanation: similar.explanation,
-              whyWrong: {},
-              subject: similar.category,
-              category: similar.category,
-              difficulty: first.difficulty,
-            };
-            weakQuestions = [...weakQuestions, gptQuestion];
-          } catch {
-            // keep weak only
-          }
-          setQuestionQueue([...weakQuestions]);
-        }
+        const weakBank = questions.filter((q) => wrongIds.has(q.id));
+        const finalQueue =
+          weakBank.length > 0
+            ? await fillToLimit(weakBank)
+            : shuffleArray(questions).slice(0, PRACTICE_SUBJECT_QUESTION_LIMIT);
+
+        initialPracticeSlotCountRef.current = finalQueue.length;
+        setQuestionQueue(finalQueue);
         setCurrentQuestionIndex(0);
         setBuildingWeakQueue(false);
       })();
       return;
     }
     if (questions.length > 0 && questionQueue.length === 0 && !buildingWeakQueue && !buildingAssessmentQueue) {
-      sessionAnswerRecordsRef.current = [];
+      resetOutcomeTracking();
       let list: Question[];
       if (selectedPracticeSubject) {
         const filtered = questions.filter((q) => subjectLabelMatches(q, selectedPracticeSubject));
@@ -273,6 +337,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
           list = shuffleArray(questions);
         }
       }
+      initialPracticeSlotCountRef.current = list.length;
       setQuestionQueue(list);
     }
   }, [
@@ -280,6 +345,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     questionQueue.length,
     reviewMistakesQuestions,
     startPracticeWithWeakAreas,
+    pendingWeakPracticeBankIds,
     restoredPracticeState,
     restoredAssessmentState,
     questionLimit,
@@ -320,6 +386,29 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     }
   }, [questionQueue, currentQuestionIndex, assessmentMode]);
 
+  useEffect(() => {
+    const q = questionQueue[currentQuestionIndex];
+    if (questionsLoading || questionsError || subjectPracticeNoMatch || !q) {
+      setActiveTutorMcq(null);
+      return;
+    }
+    setActiveTutorMcq({
+      question: q.question,
+      options: q.options,
+      correctIndex: q.correctAnswer,
+      explanation: q.explanation,
+      subject: q.subject || q.category,
+    });
+    return () => setActiveTutorMcq(null);
+  }, [
+    questionQueue,
+    currentQuestionIndex,
+    questionsLoading,
+    questionsError,
+    subjectPracticeNoMatch,
+    setActiveTutorMcq,
+  ]);
+
   const goToDashboard = () => {
     clearPracticeState();
     clearAssessmentState();
@@ -327,12 +416,20 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setCurrentScreen('dashboard');
   };
   const goToResults = () => {
-    // Build from every answer in this session (including wrong attempts before GPT replace)
-    const records = sessionAnswerRecordsRef.current;
+    const total =
+      initialPracticeSlotCountRef.current > 0
+        ? initialPracticeSlotCountRef.current
+        : Math.max(questionQueue.length, firstTryBySlotRef.current.size);
     const byDifficulty: Record<string, { correct: number; total: number }> = {};
     const byCategory: Record<string, { correct: number; total: number }> = {};
     let correct = 0;
-    records.forEach((r) => {
+    for (let i = 0; i < total; i++) {
+      const r =
+        firstTryBySlotRef.current.get(i) ?? {
+          correct: false,
+          category: 'General',
+          difficulty: 'medium',
+        };
       if (r.correct) correct++;
       const diff = r.difficulty || 'medium';
       if (!byDifficulty[diff]) byDifficulty[diff] = { correct: 0, total: 0 };
@@ -342,14 +439,15 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       if (!byCategory[cat]) byCategory[cat] = { correct: 0, total: 0 };
       byCategory[cat].total += 1;
       if (r.correct) byCategory[cat].correct += 1;
-    });
-    const total = records.length;
+    }
+    const weakBankQuestionIds = !assessmentMode ? [...wrongBankIdsSessionRef.current] : undefined;
     setLastSessionResults({
       total,
       correct,
       incorrect: total - correct,
       byDifficulty,
       byCategory,
+      ...(weakBankQuestionIds !== undefined ? { weakBankQuestionIds } : {}),
     });
     clearPracticeState();
     clearAssessmentState();
@@ -444,11 +542,26 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setIsCorrect(correct);
     setShowResult(true);
     answerQuestion(currentQuestion.id, selectedOption, correct);
-    sessionAnswerRecordsRef.current.push({
-      correct,
-      difficulty: currentQuestion.difficulty || 'medium',
-      category: currentQuestion.category || currentQuestion.subject || 'General',
-    });
+
+    if (!firstTryBySlotRef.current.has(currentQuestionIndex)) {
+      const category = currentQuestion.category || currentQuestion.subject || 'General';
+      const difficulty = currentQuestion.difficulty || 'medium';
+      firstTryBySlotRef.current.set(currentQuestionIndex, { correct, category, difficulty });
+      if (!correct) {
+        const id = currentQuestion.id;
+        const synthetic = id.startsWith('similar-') || id.startsWith('assessment-');
+        let bankId: string | null = null;
+        if (!synthetic) bankId = id;
+        else if (
+          originalWrongQuestion &&
+          !originalWrongQuestion.id.startsWith('similar-') &&
+          !originalWrongQuestion.id.startsWith('assessment-')
+        ) {
+          bankId = originalWrongQuestion.id;
+        }
+        if (bankId) wrongBankIdsSessionRef.current.add(bankId);
+      }
+    }
 
     if (!correct) {
       addMistake(currentQuestion, selectedOption);
@@ -588,11 +701,25 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setChatOpen(true);
     const userMessage = `Can you explain this question: "${currentQuestion.question}"`;
     addChatMessage('user', userMessage);
-    
-    // Use real AI service if available, otherwise fallback
+
+    const activeMcq = {
+      question: currentQuestion.question,
+      options: currentQuestion.options,
+      correctIndex: currentQuestion.correctAnswer,
+      explanation: currentQuestion.explanation,
+      subject: currentQuestion.subject || currentQuestion.category,
+    };
+    const officialBankSnippets = buildOfficialBankSnippets(questions, userMessage, currentQuestion.question, 8);
+    const conversationHistory = [
+      ...chatMessages.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: userMessage },
+    ];
+
     try {
       const { getChatbotResponse } = await import('@/app/services/aiService');
       const response = await getChatbotResponse(userMessage, {
+        activeMcq,
+        officialBankSnippets,
         currentSubject: currentQuestion.subject,
         currentQuestion: currentQuestion.question,
         userProgress: {
@@ -600,11 +727,16 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
           weakAreas: userProgress.weakAreas,
           level: userProgress.level,
         },
+        conversationHistory,
       });
       addChatMessage('ai', response);
-    } catch (error) {
-      // Fallback to basic explanation
-      addChatMessage('ai', `Great question! ${currentQuestion.explanation} The correct answer is option ${currentQuestion.correctAnswer + 1}: "${currentQuestion.options[currentQuestion.correctAnswer]}". ${selectedOption !== null && currentQuestion.whyWrong[selectedOption] ? currentQuestion.whyWrong[selectedOption] : ''}`);
+    } catch {
+      const letters = ['A', 'B', 'C', 'D'] as const;
+      const L = letters[currentQuestion.correctAnswer] ?? '?';
+      addChatMessage(
+        'ai',
+        `**Official answer (${L})** — ${currentQuestion.options[currentQuestion.correctAnswer]}\n\n${currentQuestion.explanation}${selectedOption !== null && currentQuestion.whyWrong[selectedOption] ? `\n\n${currentQuestion.whyWrong[selectedOption]}` : ''}`
+      );
     }
   };
 

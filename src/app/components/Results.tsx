@@ -94,6 +94,7 @@ export function Results() {
     setChatOpen,
     lastSessionResults,
     setStartPracticeWithWeakAreas,
+    setPendingWeakPracticeBankIds,
     setSubjectSelectFor,
     setSelectedPracticeSubject,
     completedPracticeSubjects,
@@ -392,6 +393,11 @@ export function Results() {
             <Button
               onClick={() => {
                 setSelectedPracticeSubject(null);
+                setPendingWeakPracticeBankIds(
+                  lastSessionResults?.weakBankQuestionIds !== undefined
+                    ? lastSessionResults.weakBankQuestionIds
+                    : null
+                );
                 setStartPracticeWithWeakAreas(true);
                 setCurrentScreen('practice');
               }}
