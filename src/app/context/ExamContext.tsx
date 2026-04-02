@@ -136,11 +136,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user) {
         const name = session.user.user_metadata?.full_name || session.user.email || '';
         setUserName(name);
         setIsAuthenticated(true);
+        // Token refresh (e.g. returning to the tab) must not reset navigation — otherwise
+        // Results and other screens jump to dashboard when practice storage was cleared.
+        if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+          return;
+        }
         const assessmentSaved = loadAssessmentState();
         const practiceSaved = loadPracticeState();
         if (assessmentSaved && assessmentSaved.questions.length > 0) {
