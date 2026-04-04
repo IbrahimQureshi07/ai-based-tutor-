@@ -18,6 +18,14 @@ export interface UserWrongQuestionRow {
   category: string | null;
   wrong_count: number;
   last_wrong_at: string;
+  level_band?: string | null;
+  first_try_wrong_count?: number | null;
+}
+
+export interface SaveWrongQuestionOptions {
+  levelBand?: string | null;
+  /** When true, increments first_try_wrong_count (first wrong attempt in that interaction). */
+  isFirstTry?: boolean;
 }
 
 /**
@@ -36,26 +44,35 @@ export async function getCurrentUserId(): Promise<string | null> {
 export async function saveWrongQuestion(
   userId: string,
   questionId: string,
-  category: string
+  category: string,
+  opts?: SaveWrongQuestionOptions
 ): Promise<void> {
   const { data: existing } = await supabase
     .from('user_wrong_questions')
-    .select('id, wrong_count')
+    .select('id, wrong_count, first_try_wrong_count, level_band')
     .eq('user_id', userId)
     .eq('question_id', questionId)
     .maybeSingle();
 
   const now = new Date().toISOString();
   const cat = category || 'General';
+  const levelBand = opts?.levelBand ?? null;
+  const ftDelta = opts?.isFirstTry ? 1 : 0;
 
   if (existing) {
-    await supabase
-      .from('user_wrong_questions')
-      .update({
-        wrong_count: (existing.wrong_count ?? 1) + 1,
-        last_wrong_at: now,
-      })
-      .eq('id', existing.id);
+    const prevFt = existing.first_try_wrong_count ?? 0;
+    const patch: Record<string, unknown> = {
+      wrong_count: (existing.wrong_count ?? 1) + 1,
+      last_wrong_at: now,
+      category: cat,
+    };
+    if (levelBand && !existing.level_band) {
+      patch.level_band = levelBand;
+    }
+    if (ftDelta > 0) {
+      patch.first_try_wrong_count = prevFt + ftDelta;
+    }
+    await supabase.from('user_wrong_questions').update(patch).eq('id', existing.id);
   } else {
     await supabase.from('user_wrong_questions').insert({
       user_id: userId,
@@ -63,6 +80,8 @@ export async function saveWrongQuestion(
       category: cat,
       wrong_count: 1,
       last_wrong_at: now,
+      level_band: levelBand,
+      first_try_wrong_count: ftDelta > 0 ? 1 : 0,
     });
   }
 }

@@ -6,6 +6,11 @@ import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
+import { LevelBandPill } from '@/app/components/LevelBandPill';
+import { isEphemeralQuestionId } from '@/app/constants/levelBands';
+import { getCurrentUserId, saveWrongQuestion } from '@/app/services/userWrongQuestions';
+import { getOrClassifyLevelBand } from '@/app/services/questionLevels';
+import { aggregateResultsByLevelBand } from '@/app/utils/buildSessionResultsByLevelBand';
 import { Clock, Flag, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 
@@ -56,45 +61,56 @@ export function MockTest() {
   const submitTest = () => {
     setTestCompleted(true);
 
-    const byDifficulty: Record<string, { correct: number; total: number }> = {};
-    const byCategory: Record<string, { correct: number; total: number }> = {};
-    let correct = 0;
-    let total = 0;
     testQuestions.forEach((question, index) => {
       const userAnswer = answers.get(index);
       if (userAnswer !== undefined) {
-        total++;
         const isCorrect = userAnswer === question.correctAnswer;
-        if (isCorrect) correct++;
         answerQuestion(question.id, userAnswer, isCorrect);
-        const diff = question.difficulty || 'medium';
-        if (!byDifficulty[diff]) byDifficulty[diff] = { correct: 0, total: 0 };
-        byDifficulty[diff].total += 1;
-        if (isCorrect) byDifficulty[diff].correct += 1;
-        const cat = question.category || question.subject || 'General';
-        if (!byCategory[cat]) byCategory[cat] = { correct: 0, total: 0 };
-        byCategory[cat].total += 1;
-        if (isCorrect) byCategory[cat].correct += 1;
       }
     });
 
-    setLastSessionResults({
-      total,
-      correct,
-      incorrect: total - correct,
-      byDifficulty,
-      byCategory,
-    });
+    void (async () => {
+      const { byDifficulty, byCategory, correct, total } = await aggregateResultsByLevelBand(
+        testQuestions,
+        (i) => answers.get(i)
+      );
+      setLastSessionResults({
+        total,
+        correct,
+        incorrect: total - correct,
+        byDifficulty,
+        byCategory,
+      });
 
-    updateProgress({
-      mockTestsCompleted: userProgress.mockTestsCompleted + 1,
-    });
+      const userId = await getCurrentUserId();
+      if (userId) {
+        for (let i = 0; i < testQuestions.length; i++) {
+          const question = testQuestions[i];
+          const userAnswer = answers.get(i);
+          if (userAnswer === undefined) continue;
+          if (userAnswer === question.correctAnswer) continue;
+          if (isEphemeralQuestionId(question.id)) continue;
+          try {
+            const band = await getOrClassifyLevelBand(question);
+            await saveWrongQuestion(userId, question.id, question.category || question.subject || 'General', {
+              levelBand: band,
+              isFirstTry: true,
+            });
+          } catch (e) {
+            console.warn('mock saveWrongQuestion', e);
+          }
+        }
+      }
 
-    setSelectedMockSubject(null);
+      updateProgress({
+        mockTestsCompleted: userProgress.mockTestsCompleted + 1,
+      });
 
-    setTimeout(() => {
+      setSelectedMockSubject(null);
+
+      await new Promise((r) => setTimeout(r, 2000));
       setCurrentScreen('results');
-    }, 2000);
+    })();
   };
 
   submitTestRef.current = submitTest;
@@ -314,10 +330,11 @@ export function MockTest() {
               <Card className="p-6 md:p-8 mb-6">
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
                         {currentQuestion.category}
                       </span>
+                      <LevelBandPill question={currentQuestion} />
                       {flaggedQuestions.has(currentQuestionIndex) && (
                         <span className="px-3 py-1 rounded-full bg-warning/10 text-warning text-xs font-semibold flex items-center gap-1">
                           <Flag className="w-3 h-3" />

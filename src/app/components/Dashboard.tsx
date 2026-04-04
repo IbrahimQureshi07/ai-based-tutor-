@@ -25,6 +25,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/app/components/ui/tooltip';
 import { aiSuggestions } from '@/app/data/exam-data';
 import { useState, useEffect } from 'react';
+import { useQuestions } from '@/app/hooks/useQuestions';
+import { backfillMissingQuestionLevels } from '@/app/services/questionLevels';
 
 export function Dashboard() {
   const {
@@ -44,6 +46,9 @@ export function Dashboard() {
   const [focusMode, setFocusMode] = useState(false);
   const [showMockUnlock, setShowMockUnlock] = useState(false);
   const [showFinalUnlock, setShowFinalUnlock] = useState(false);
+  const { questions: bankQuestions, loading: bankQuestionsLoading } = useQuestions();
+  const [backfillBusy, setBackfillBusy] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
 
   const mockTestUnlocked = userProgress.examReadiness >= 80;
   const finalExamUnlocked = userProgress.mockTestsCompleted >= 1 && userProgress.examReadiness >= 90;
@@ -295,6 +300,46 @@ export function Dashboard() {
                 </Button>
               </div>
             </div>
+          </Card>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.32 }}
+        >
+          <Card className="p-4 border-dashed border-muted-foreground/25 bg-muted/20">
+            <h3 className="text-sm font-semibold mb-1">Question level tags (batch)</h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Tag bank rows missing from <code className="text-[10px] bg-muted px-1 rounded">question_levels</code> using
+              GPT (25 per batch, max 500). Uses your OpenAI key; run when you add many new questions.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={backfillBusy || bankQuestionsLoading || bankQuestions.length === 0}
+              onClick={() => {
+                setBackfillMsg(null);
+                setBackfillBusy(true);
+                void (async () => {
+                  try {
+                    const r = await backfillMissingQuestionLevels(bankQuestions, {
+                      batchSize: 25,
+                      maxTotal: 500,
+                    });
+                    setBackfillMsg(`Done: ${r.done} tagged${r.failed ? `, ${r.failed} failed` : ''}.`);
+                  } catch (e) {
+                    setBackfillMsg(e instanceof Error ? e.message : 'Backfill failed');
+                  } finally {
+                    setBackfillBusy(false);
+                  }
+                })();
+              }}
+            >
+              {backfillBusy ? 'Running batch…' : 'Backfill missing levels'}
+            </Button>
+            {backfillMsg && <p className="text-xs text-muted-foreground mt-2">{backfillMsg}</p>}
           </Card>
         </motion.div>
 

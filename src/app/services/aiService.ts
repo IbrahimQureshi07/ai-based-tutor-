@@ -9,6 +9,11 @@
  */
 
 import type { TutorActiveMcq } from '@/app/utils/tutorOfficialContext';
+import {
+  LEVEL_SLUGS,
+  normalizeLevelBandSlug,
+  type LevelBandSlug,
+} from '@/app/constants/levelBands';
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
@@ -365,6 +370,55 @@ Reply with ONLY the hint text, no labels or quotes.`;
 
   const hint = await callOpenAI(messages, 0.5, 120);
   return (hint || 'Read the question again and check each option carefully.').trim();
+}
+
+/**
+ * Classify a bank-style MCQ into one of six level bands (for UI + adaptive analytics).
+ */
+export async function classifyQuestionLevelBand(
+  questionText: string,
+  options: string[],
+  categorySubject: string
+): Promise<LevelBandSlug> {
+  const opts = options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n');
+  const allowed = LEVEL_SLUGS.join(', ');
+  const prompt = `Classify this multiple-choice exam question into exactly ONE difficulty band.
+
+Bands (lowest → highest demand):
+- easy: basic recall, straightforward
+- above_easy: simple reasoning one step beyond recall
+- medium: typical exam reasoning
+- above_medium: multi-step or subtle distinctions
+- hard: demanding analysis or exceptions
+- above_hard: very challenging, expert-level
+
+Context / category: ${categorySubject}
+
+Question:
+${questionText}
+
+Options:
+${opts}
+
+Reply with ONLY this JSON (no markdown): {"level":"<one of: ${allowed}>"}`;
+
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content: 'You reply with only valid JSON: {"level":"..."}. The level must be one of the allowed slugs exactly.',
+    },
+    { role: 'user', content: prompt },
+  ];
+
+  try {
+    const response = await callOpenAI(messages, 0.2, 100);
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    const jsonStr = jsonMatch ? jsonMatch[0] : response;
+    const parsed = JSON.parse(jsonStr) as { level?: string };
+    return normalizeLevelBandSlug(parsed.level);
+  } catch {
+    return 'medium';
+  }
 }
 
 /**

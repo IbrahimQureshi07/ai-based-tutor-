@@ -9,6 +9,15 @@ import { subjectLabelMatches } from '@/app/utils/subjectMatch';
 import { buildOfficialBankSnippets } from '@/app/utils/tutorOfficialContext';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { getCurrentUserId, saveWrongQuestion, getUserWrongQuestions } from '@/app/services/userWrongQuestions';
+import { getOrClassifyLevelBand } from '@/app/services/questionLevels';
+import { selectQuestionsBalancedByBands } from '@/app/utils/selectBalancedByLevelBands';
+import { selectQuestionsAdaptiveByBands } from '@/app/utils/selectAdaptiveByLevelBands';
+import {
+  isEphemeralQuestionId,
+  fallbackBandFromLegacyDifficulty,
+  type LevelBandSlug,
+} from '@/app/constants/levelBands';
+import { LevelBandPill } from '@/app/components/LevelBandPill';
 import { generateSimilarQuestion, generateQuestion, generateHint } from '@/app/services/aiService';
 import { savePracticeState, clearPracticeState, saveAssessmentState, clearAssessmentState } from '@/app/services/practiceStateStorage';
 import {
@@ -21,8 +30,16 @@ import {
   ChevronRight
 } from 'lucide-react';
 
-/** Topic practice: N random questions from the chosen subject (raise to 25 when ready). */
+/** Topic practice: balanced across 6 level bands; increase to 25 when scaling. */
 const PRACTICE_SUBJECT_QUESTION_LIMIT = 5;
+
+async function pickPracticeQueue(candidates: Question[], n: number): Promise<Question[]> {
+  const userId = await getCurrentUserId();
+  if (userId) {
+    return selectQuestionsAdaptiveByBands(candidates, n, userId);
+  }
+  return selectQuestionsBalancedByBands(candidates, n);
+}
 
 /** Fisher-Yates shuffle — returns a new array, does not mutate original. */
 function shuffleArray<T>(arr: T[]): T[] {
@@ -86,17 +103,22 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
   const [originalWrongQuestion, setOriginalWrongQuestion] = useState<Question | null>(null);
   const [buildingWeakQueue, setBuildingWeakQueue] = useState(false);
   const [buildingAssessmentQueue, setBuildingAssessmentQueue] = useState(false);
+  const [buildingBalancedPractice, setBuildingBalancedPractice] = useState(false);
   /** True when user picked a topic but no rows matched (do not show mixed fallback). */
   const [subjectPracticeNoMatch, setSubjectPracticeNoMatch] = useState(false);
   /** Number of test slots when session started (matches Results "Questions" total). */
   const initialPracticeSlotCountRef = useRef(0);
-  /** First submit only per slot index — drives Results correct/incorrect & weak areas. */
-  const firstTryBySlotRef = useRef(new Map<number, { correct: boolean; category: string; difficulty: string }>());
+  /** First submit only per slot index — drives Results correct/incorrect & weak areas (six bands). */
+  const firstTryBySlotRef = useRef(
+    new Map<number, { correct: boolean; category: string; levelBand: LevelBandSlug }>()
+  );
   const wrongBankIdsSessionRef = useRef(new Set<string>());
+  const resolvedLevelBandByQuestionIdRef = useRef(new Map<string, LevelBandSlug>());
 
   const resetOutcomeTracking = () => {
     firstTryBySlotRef.current = new Map();
     wrongBankIdsSessionRef.current = new Set();
+    resolvedLevelBandByQuestionIdRef.current = new Map();
     initialPracticeSlotCountRef.current = 0;
   };
 
@@ -147,6 +169,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       setCurrentQuestionIndex(0);
       return;
     }
+    if (buildingBalancedPractice) return;
     if (questionQueue.length > 0 && !startPracticeWithWeakAreas) return;
     if (assessmentMode && questions.length > 0 && questionQueue.length === 0) {
       setSubjectPracticeNoMatch(false);
@@ -224,7 +247,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
           setCurrentQuestionIndex(0);
         } else {
           resetOutcomeTracking();
-          const list = questions.slice(0, 10);
+          const list = await pickPracticeQueue(questions, 10);
           initialPracticeSlotCountRef.current = list.length;
           setQuestionQueue(list);
         }
@@ -244,9 +267,12 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
 
         const fillToLimit = async (bankQs: Question[]): Promise<Question[]> => {
           const cap = PRACTICE_SUBJECT_QUESTION_LIMIT;
-          const base = bankQs.slice(0, cap);
+          const base =
+            bankQs.length === 0
+              ? await pickPracticeQueue(questions, cap)
+              : await pickPracticeQueue(bankQs, cap);
           if (base.length === 0) {
-            return shuffleArray(questions).slice(0, cap);
+            return pickPracticeQueue(questions, cap);
           }
           const need = Math.max(0, cap - base.length);
           if (need === 0) return base;
@@ -290,7 +316,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
         }
 
         if (sessionBankIds !== null && sessionBankIds.length === 0) {
-          const list = shuffleArray(questions).slice(0, PRACTICE_SUBJECT_QUESTION_LIMIT);
+          const list = await pickPracticeQueue(questions, PRACTICE_SUBJECT_QUESTION_LIMIT);
           initialPracticeSlotCountRef.current = list.length;
           setQuestionQueue(list);
           setCurrentQuestionIndex(0);
@@ -299,7 +325,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
         }
 
         if (!userId) {
-          const list = shuffleArray(questions).slice(0, PRACTICE_SUBJECT_QUESTION_LIMIT);
+          const list = await selectQuestionsBalancedByBands(questions, PRACTICE_SUBJECT_QUESTION_LIMIT);
           initialPracticeSlotCountRef.current = list.length;
           setQuestionQueue(list);
           setCurrentQuestionIndex(0);
@@ -313,7 +339,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
         const finalQueue =
           weakBank.length > 0
             ? await fillToLimit(weakBank)
-            : shuffleArray(questions).slice(0, PRACTICE_SUBJECT_QUESTION_LIMIT);
+            : await pickPracticeQueue(questions, PRACTICE_SUBJECT_QUESTION_LIMIT);
 
         initialPracticeSlotCountRef.current = finalQueue.length;
         setQuestionQueue(finalQueue);
@@ -322,23 +348,50 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
       })();
       return;
     }
-    if (questions.length > 0 && questionQueue.length === 0 && !buildingWeakQueue && !buildingAssessmentQueue) {
+    if (
+      questions.length > 0 &&
+      questionQueue.length === 0 &&
+      !buildingWeakQueue &&
+      !buildingAssessmentQueue &&
+      !buildingBalancedPractice
+    ) {
       resetOutcomeTracking();
-      let list: Question[];
       if (selectedPracticeSubject) {
         const filtered = questions.filter((q) => subjectLabelMatches(q, selectedPracticeSubject));
-        list = shuffleArray(filtered).slice(0, PRACTICE_SUBJECT_QUESTION_LIMIT);
-        setSubjectPracticeNoMatch(list.length === 0);
-      } else {
-        setSubjectPracticeNoMatch(false);
-        if (questionLimit) {
-          list = shuffleArray(questions).slice(0, questionLimit);
-        } else {
-          list = shuffleArray(questions);
+        setSubjectPracticeNoMatch(filtered.length === 0);
+        if (filtered.length === 0) {
+          initialPracticeSlotCountRef.current = 0;
+          setQuestionQueue([]);
+          return;
         }
+        setBuildingBalancedPractice(true);
+        void (async () => {
+          try {
+            const list = await pickPracticeQueue(filtered, PRACTICE_SUBJECT_QUESTION_LIMIT);
+            initialPracticeSlotCountRef.current = list.length;
+            setQuestionQueue(list);
+          } finally {
+            setBuildingBalancedPractice(false);
+          }
+        })();
+        return;
       }
-      initialPracticeSlotCountRef.current = list.length;
-      setQuestionQueue(list);
+      setSubjectPracticeNoMatch(false);
+      if (questionLimit) {
+        setBuildingBalancedPractice(true);
+        void (async () => {
+          try {
+            const list = await pickPracticeQueue(questions, questionLimit);
+            initialPracticeSlotCountRef.current = list.length;
+            setQuestionQueue(list);
+          } finally {
+            setBuildingBalancedPractice(false);
+          }
+        })();
+        return;
+      }
+      initialPracticeSlotCountRef.current = questions.length;
+      setQuestionQueue(shuffleArray(questions));
     }
   }, [
     questions,
@@ -352,6 +405,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     assessmentMode,
     selectedPracticeSubject,
     buildingAssessmentQueue,
+    buildingBalancedPractice,
   ]);
 
   // Clear hint when moving to another question so next hint is fresh
@@ -409,6 +463,18 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     setActiveTutorMcq,
   ]);
 
+  useEffect(() => {
+    const q = questionQueue[currentQuestionIndex];
+    if (!q || subjectPracticeNoMatch || questionsLoading || questionsError) return;
+    let cancelled = false;
+    getOrClassifyLevelBand(q).then((b) => {
+      if (!cancelled) resolvedLevelBandByQuestionIdRef.current.set(q.id, b);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentQuestionIndex, questionQueue, subjectPracticeNoMatch, questionsLoading, questionsError]);
+
   const goToDashboard = () => {
     clearPracticeState();
     clearAssessmentState();
@@ -428,10 +494,10 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
         firstTryBySlotRef.current.get(i) ?? {
           correct: false,
           category: 'General',
-          difficulty: 'medium',
+          levelBand: 'medium' as LevelBandSlug,
         };
       if (r.correct) correct++;
-      const diff = r.difficulty || 'medium';
+      const diff = r.levelBand || 'medium';
       if (!byDifficulty[diff]) byDifficulty[diff] = { correct: 0, total: 0 };
       byDifficulty[diff].total += 1;
       if (r.correct) byDifficulty[diff].correct += 1;
@@ -523,7 +589,13 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-muted-foreground">
-            {buildingAssessmentQueue ? 'Generating your personalized assessment...' : buildingWeakQueue ? 'Loading your weak-area questions...' : 'Preparing questions...'}
+            {buildingAssessmentQueue
+              ? 'Generating your personalized assessment...'
+              : buildingWeakQueue
+                ? 'Loading your weak-area questions...'
+                : buildingBalancedPractice
+                  ? 'Building your practice set (weak levels weighted)…'
+                  : 'Preparing questions...'}
           </p>
         </div>
       </div>
@@ -538,6 +610,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
   const handleSubmit = () => {
     if (selectedOption === null) return;
 
+    const wasFirstSubmitOnSlot = !firstTryBySlotRef.current.has(currentQuestionIndex);
     const correct = selectedOption === currentQuestion.correctAnswer;
     setIsCorrect(correct);
     setShowResult(true);
@@ -545,8 +618,10 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
 
     if (!firstTryBySlotRef.current.has(currentQuestionIndex)) {
       const category = currentQuestion.category || currentQuestion.subject || 'General';
-      const difficulty = currentQuestion.difficulty || 'medium';
-      firstTryBySlotRef.current.set(currentQuestionIndex, { correct, category, difficulty });
+      const levelBand =
+        resolvedLevelBandByQuestionIdRef.current.get(currentQuestion.id) ??
+        fallbackBandFromLegacyDifficulty(currentQuestion.difficulty);
+      firstTryBySlotRef.current.set(currentQuestionIndex, { correct, category, levelBand });
       if (!correct) {
         const id = currentQuestion.id;
         const synthetic = id.startsWith('similar-') || id.startsWith('assessment-');
@@ -566,12 +641,21 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     if (!correct) {
       addMistake(currentQuestion, selectedOption);
 
-      const isGptQuestion = currentQuestion.id.startsWith('similar-');
-      if (!isGptQuestion) {
+      const skipWrongDb = isEphemeralQuestionId(currentQuestion.id);
+      if (!skipWrongDb) {
         const wrongCount = wrongQuestionsCount.get(currentQuestion.id) || 0;
         setWrongQuestionsCount(new Map(wrongQuestionsCount).set(currentQuestion.id, wrongCount + 1));
-        getCurrentUserId().then((userId) => {
-          if (userId) saveWrongQuestion(userId, currentQuestion.id, currentQuestion.category || 'General');
+        getCurrentUserId().then(async (userId) => {
+          if (!userId) return;
+          try {
+            const band = await getOrClassifyLevelBand(currentQuestion);
+            await saveWrongQuestion(userId, currentQuestion.id, currentQuestion.category || 'General', {
+              levelBand: band,
+              isFirstTry: wasFirstSubmitOnSlot,
+            });
+          } catch (e) {
+            console.warn('saveWrongQuestion', e);
+          }
         });
       }
 
@@ -821,19 +905,11 @@ const similarQuestions = questions.filter(q =>
                 {/* Question Header */}
                 <div className="flex items-start justify-between mb-6">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
                         {currentQuestion.category}
                       </span>
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
-                        currentQuestion.difficulty === 'easy' 
-                          ? 'bg-success/10 text-success'
-                          : currentQuestion.difficulty === 'medium'
-                          ? 'bg-warning/10 text-warning'
-                          : 'bg-destructive/10 text-destructive'
-                      }`}>
-                        {currentQuestion.difficulty.charAt(0).toUpperCase() + currentQuestion.difficulty.slice(1)}
-                      </span>
+                      <LevelBandPill question={currentQuestion} />
                     </div>
                     <h2 className="text-xl md:text-2xl font-semibold">
                       {currentQuestion.question}

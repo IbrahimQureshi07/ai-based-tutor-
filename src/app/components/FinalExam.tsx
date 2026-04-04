@@ -5,6 +5,11 @@ import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
 import { useQuestions } from '@/app/hooks/useQuestions';
+import { LevelBandPill } from '@/app/components/LevelBandPill';
+import { isEphemeralQuestionId } from '@/app/constants/levelBands';
+import { getCurrentUserId, saveWrongQuestion } from '@/app/services/userWrongQuestions';
+import { getOrClassifyLevelBand } from '@/app/services/questionLevels';
+import { aggregateResultsByLevelBand } from '@/app/utils/buildSessionResultsByLevelBand';
 import { Trophy, Clock, AlertTriangle, Award, Download, Share2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 
@@ -163,6 +168,27 @@ export function FinalExam() {
     const score = Math.round((correct / questions.length) * 100);
     setFinalScore(score);
 
+    void (async () => {
+      const userId = await getCurrentUserId();
+      if (!userId) return;
+      for (let index = 0; index < questions.length; index++) {
+        const question = questions[index];
+        const userAnswer = answers.get(index);
+        if (userAnswer === undefined) continue;
+        if (userAnswer === question.correctAnswer) continue;
+        if (isEphemeralQuestionId(question.id)) continue;
+        try {
+          const band = await getOrClassifyLevelBand(question);
+          await saveWrongQuestion(userId, question.id, question.category || question.subject || 'General', {
+            levelBand: band,
+            isFirstTry: true,
+          });
+        } catch (e) {
+          console.warn('final saveWrongQuestion', e);
+        }
+      }
+    })();
+
     // Update final exam status
     updateProgress({
       finalExamUnlocked: true
@@ -242,13 +268,14 @@ export function FinalExam() {
                 <Card className="p-8 border-2 border-primary/20 shadow-xl">
                   {/* Question */}
                   <div className="mb-8">
-                    <div className="flex items-center gap-2 mb-4">
+                    <div className="flex items-center gap-2 mb-4 flex-wrap">
                       <span className="px-3 py-1 rounded-full bg-primary text-primary-foreground text-xs font-semibold">
                         Q{currentQuestionIndex + 1}
                       </span>
                       <span className="px-3 py-1 rounded-full bg-muted text-xs font-semibold">
                         {currentQuestion.category}
                       </span>
+                      <LevelBandPill question={currentQuestion} />
                     </div>
                     <h2 className="text-2xl font-semibold leading-relaxed">
                       {currentQuestion.question}
@@ -419,28 +446,20 @@ export function FinalExam() {
               <Button
                 onClick={() => {
                   setShowCertificate(false);
-                  const byDifficulty: Record<string, { correct: number; total: number }> = {};
-                  const byCategory: Record<string, { correct: number; total: number }> = {};
-                  let correct = 0;
-                  let total = 0;
-                  questions.forEach((question, index) => {
-                    const userAnswer = answers.get(index);
-                    if (userAnswer !== undefined) {
-                      total++;
-                      const isCorrect = userAnswer === question.correctAnswer;
-                      if (isCorrect) correct++;
-                      const diff = question.difficulty || 'medium';
-                      if (!byDifficulty[diff]) byDifficulty[diff] = { correct: 0, total: 0 };
-                      byDifficulty[diff].total += 1;
-                      if (isCorrect) byDifficulty[diff].correct += 1;
-                      const cat = question.category || question.subject || 'General';
-                      if (!byCategory[cat]) byCategory[cat] = { correct: 0, total: 0 };
-                      byCategory[cat].total += 1;
-                      if (isCorrect) byCategory[cat].correct += 1;
-                    }
-                  });
-                  setLastSessionResults({ total, correct, incorrect: total - correct, byDifficulty, byCategory });
-                  setCurrentScreen('results');
+                  void (async () => {
+                    const { byDifficulty, byCategory, correct, total } = await aggregateResultsByLevelBand(
+                      questions,
+                      (i) => answers.get(i)
+                    );
+                    setLastSessionResults({
+                      total,
+                      correct,
+                      incorrect: total - correct,
+                      byDifficulty,
+                      byCategory,
+                    });
+                    setCurrentScreen('results');
+                  })();
                 }}
                 size="lg"
               >

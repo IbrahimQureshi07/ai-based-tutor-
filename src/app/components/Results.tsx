@@ -19,6 +19,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { useEffect, useState } from 'react';
 import { SUBJECTS, type SubjectMeta } from '@/app/data/subjects';
+import { LEVEL_SLUGS, LEVEL_BAND_LABELS, type LevelBandSlug } from '@/app/constants/levelBands';
 
 function TopicPracticeCard({
   s,
@@ -136,15 +137,27 @@ export function Results() {
     { name: 'Incorrect', value: incorrect, color: '#EF4444' }
   ];
 
-  // Difficulty breakdown from last session (Easy, Medium, Hard order)
+  function levelBandChartLabel(key: string): string {
+    if (key in LEVEL_BAND_LABELS) return LEVEL_BAND_LABELS[key as LevelBandSlug];
+    return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  // Level-band breakdown (six bands); legacy sessions may only have easy/medium/hard keys
   const barData = lastSessionResults?.byDifficulty
-    ? ['easy', 'medium', 'hard']
-        .filter((d) => lastSessionResults.byDifficulty[d]?.total)
-        .map((d) => ({
-          difficulty: d.charAt(0).toUpperCase() + d.slice(1),
+    ? [
+        ...LEVEL_SLUGS.filter((d) => lastSessionResults.byDifficulty[d]?.total).map((d) => ({
+          difficulty: LEVEL_BAND_LABELS[d],
           correct: lastSessionResults.byDifficulty[d].correct,
           total: lastSessionResults.byDifficulty[d].total,
-        }))
+        })),
+        ...Object.keys(lastSessionResults.byDifficulty)
+          .filter((k) => !(LEVEL_SLUGS as readonly string[]).includes(k) && lastSessionResults.byDifficulty[k]?.total)
+          .map((k) => ({
+            difficulty: levelBandChartLabel(k),
+            correct: lastSessionResults.byDifficulty[k].correct,
+            total: lastSessionResults.byDifficulty[k].total,
+          })),
+      ]
     : [];
 
   // Subject-wise radar from last session categories
