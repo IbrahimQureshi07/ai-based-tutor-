@@ -27,11 +27,17 @@ import {
   XCircle,
   RefreshCw,
   MessageCircle,
-  ChevronRight
+  ChevronRight,
+  SkipForward,
 } from 'lucide-react';
 
 /** Topic practice: balanced across 6 level bands; increase to 25 when scaling. */
 const PRACTICE_SUBJECT_QUESTION_LIMIT = 5;
+
+/** AI follow-up after a wrong bank answer (`similar-*`), not dataset rows or `assessment-*`. */
+function isGptSimilarFollowUpQuestion(id: string): boolean {
+  return id.startsWith('similar-');
+}
 
 async function pickPracticeQueue(candidates: Question[], n: number): Promise<Question[]> {
   const userId = await getCurrentUserId();
@@ -39,16 +45,6 @@ async function pickPracticeQueue(candidates: Question[], n: number): Promise<Que
     return selectQuestionsAdaptiveByBands(candidates, n, userId);
   }
   return selectQuestionsBalancedByBands(candidates, n);
-}
-
-/** Fisher-Yates shuffle — returns a new array, does not mutate original. */
-function shuffleArray<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
 }
 
 interface PracticeTestProps {
@@ -390,8 +386,17 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
         })();
         return;
       }
-      initialPracticeSlotCountRef.current = questions.length;
-      setQuestionQueue(shuffleArray(questions));
+      setBuildingBalancedPractice(true);
+      void (async () => {
+        try {
+          const list = await pickPracticeQueue(questions, questions.length);
+          initialPracticeSlotCountRef.current = list.length;
+          setQuestionQueue(list);
+        } finally {
+          setBuildingBalancedPractice(false);
+        }
+      })();
+      return;
     }
   }, [
     questions,
@@ -824,6 +829,21 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
     }
   };
 
+  const handleSkipSimilarRemediation = () => {
+    if (!isGptSimilarFollowUpQuestion(currentQuestion.id) || loadingSimilar) return;
+    setOriginalWrongQuestion(null);
+    setIsRetryQuestion(false);
+    setSelectedOption(null);
+    setShowResult(false);
+    setShowHint(false);
+    addChatMessage('ai', 'Skipped the practice question — moving on. You can revisit this topic anytime! 📚');
+    if (currentQuestionIndex < questionQueue.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+    } else {
+      goToResults();
+    }
+  };
+
   const handleSimilarQuestion = () => {
     // Find a question from the same category
 const similarQuestions = questions.filter(q =>
@@ -903,8 +923,8 @@ const similarQuestions = questions.filter(q =>
             >
               <Card className="p-6 md:p-8 mb-6">
                 {/* Question Header */}
-                <div className="flex items-start justify-between mb-6">
-                  <div className="flex-1">
+                <div className="flex items-start justify-between gap-3 mb-6">
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
                         {currentQuestion.category}
@@ -914,7 +934,7 @@ const similarQuestions = questions.filter(q =>
                     <h2 className="text-xl md:text-2xl font-semibold">
                       {currentQuestion.question}
                     </h2>
-                    {isRetryQuestion && !showResult && (
+                    {isRetryQuestion && !showResult && !isGptSimilarFollowUpQuestion(currentQuestion.id) && (
                       <div className="mt-3 p-3 rounded-lg bg-warning/10 border border-warning/30">
                         <p className="text-sm text-warning flex items-center gap-2">
                           <RefreshCw className="w-4 h-4" />
@@ -922,7 +942,31 @@ const similarQuestions = questions.filter(q =>
                         </p>
                       </div>
                     )}
+                    {isRetryQuestion && !showResult && isGptSimilarFollowUpQuestion(currentQuestion.id) && (
+                      <div className="mt-3 p-3 rounded-lg bg-muted/80 border border-border">
+                        <p className="text-sm text-muted-foreground flex items-center gap-2">
+                          <RefreshCw className="w-4 h-4 shrink-0 text-primary" />
+                          <span>
+                            Practice question from the tutor. Answer if you want more drill, or use{' '}
+                            <strong className="text-foreground">Skip</strong> (top right) to continue the quiz.
+                          </span>
+                        </p>
+                      </div>
+                    )}
                   </div>
+                  {isGptSimilarFollowUpQuestion(currentQuestion.id) && (!showResult || !isCorrect) && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleSkipSimilarRemediation}
+                      disabled={loadingSimilar}
+                      className="gap-1.5 shrink-0 border-dashed"
+                    >
+                      <SkipForward className="w-4 h-4" />
+                      Skip
+                    </Button>
+                  )}
                 </div>
 
                 {/* Options */}
@@ -1041,7 +1085,15 @@ const similarQuestions = questions.filter(q =>
                           </Button>
                           <div className="text-xs text-muted-foreground flex items-center gap-1 mt-2 w-full">
                             <span className="text-warning">⚠️</span>
-                            <span>You need to answer this correctly before moving forward. Don't worry, you can try again!</span>
+                            <span>
+                              {isGptSimilarFollowUpQuestion(currentQuestion.id) ? (
+                                <>
+                                  Try again for another practice question, or tap <strong>Skip</strong> (top right) to move on.
+                                </>
+                              ) : (
+                                <>You need to answer this correctly before moving forward. Don&apos;t worry, you can try again!</>
+                              )}
+                            </span>
                           </div>
                         </>
                       )}

@@ -20,6 +20,7 @@ function shuffleInPlace<T>(arr: T[]): T[] {
 /**
  * Pick up to `targetCount` bank questions so each level band is represented as evenly as the pool allows.
  * Uses `question_levels` when present; otherwise legacy `difficulty` → band fallback.
+ * Order: all picked easy first, then above_easy, … through above_hard (shuffle only within each band).
  */
 export async function selectQuestionsBalancedByBands(
   candidates: Question[],
@@ -65,13 +66,16 @@ export async function selectQuestionsBalancedByBands(
   }
 
   if (picked.length < n) {
-    const rest = shuffleInPlace(bankOnly.filter((q) => !used.has(q.id)));
-    for (const q of rest) {
+    for (const band of LEVEL_SLUGS) {
       if (picked.length >= n) break;
-      picked.push(q);
-      used.add(q.id);
+      for (const q of byBand.get(band)!) {
+        if (picked.length >= n) break;
+        if (used.has(q.id)) continue;
+        picked.push(q);
+        used.add(q.id);
+      }
     }
   }
 
-  return shuffleInPlace(picked);
+  return picked;
 }

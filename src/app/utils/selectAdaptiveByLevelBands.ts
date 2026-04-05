@@ -18,6 +18,7 @@ function shuffleInPlace<T>(arr: T[]): T[] {
   return a;
 }
 
+/** Order: easy → above_easy → … → above_hard; shuffle only within each band. */
 export async function selectQuestionsAdaptiveByBands(
   candidates: Question[],
   targetCount: number,
@@ -64,13 +65,16 @@ export async function selectQuestionsAdaptiveByBands(
   }
 
   if (picked.length < n) {
-    const rest = shuffleInPlace(bankOnly.filter((q) => !used.has(q.id)));
-    for (const q of rest) {
+    for (const band of LEVEL_SLUGS) {
       if (picked.length >= n) break;
-      picked.push(q);
-      used.add(q.id);
+      for (const q of byBand.get(band)!) {
+        if (picked.length >= n) break;
+        if (used.has(q.id)) continue;
+        picked.push(q);
+        used.add(q.id);
+      }
     }
   }
 
-  return shuffleInPlace(picked);
+  return picked;
 }
