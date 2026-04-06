@@ -293,13 +293,14 @@ export function Dashboard() {
                 <h3 className="font-semibold mb-2">Personalized Assessment</h3>
                 <p className="text-muted-foreground mb-4">
                   {!userProgress.completedAssessment
-                    ? "We check your weak areas from past attempts and generate practice questions to improve. 10 questions tailored for you."
-                    : "Based on your mistakes we'll give you targeted practice. Continue where you left off."}
+                    ? 'Start Stage 1 from any topic (A1–B6), or after your first completion open weak-area practice here.'
+                    : 'Based on your mistakes we can give you targeted practice. Continue where you left off.'}
                 </p>
                 <Button
                   onClick={() => {
                     if (!userProgress.completedAssessment) {
-                      setCurrentScreen('assessment');
+                      setSubjectSelectFor('assessment');
+                      setCurrentScreen('subjectSelect');
                     } else {
                       setSelectedPracticeSubject(null);
                       setPendingWeakPracticeBankIds(null);
@@ -310,7 +311,7 @@ export function Dashboard() {
                   className="bg-primary hover:bg-primary/90"
                 >
                   <Zap className="w-4 h-4 mr-2" />
-                  {!userProgress.completedAssessment ? 'Start Assessment' : 'Continue Practice'}
+                  {!userProgress.completedAssessment ? 'Choose Stage 1 topic' : 'Continue Practice'}
                 </Button>
               </div>
             </div>
@@ -376,7 +377,10 @@ export function Dashboard() {
                         ? 'bg-success/10 border-success/30' 
                         : 'bg-card hover:border-primary/50'
                     }`}
-                    onClick={() => !userProgress.completedAssessment && setCurrentScreen('assessment')}
+                    onClick={() => {
+                      setSubjectSelectFor('assessment');
+                      setCurrentScreen('subjectSelect');
+                    }}
                   >
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
@@ -388,18 +392,16 @@ export function Dashboard() {
                         )}
                       </div>
                       <div>
-                        <h3 className="font-semibold mb-1">Initial Assessment</h3>
+                        <h3 className="font-semibold mb-1">Stage 1 Assessment</h3>
                         <p className="text-sm text-muted-foreground">
-                          {userProgress.completedAssessment 
-                            ? 'Completed! Great job!' 
-                            : 'Evaluate your current level'}
+                          {userProgress.completedAssessment
+                            ? 'Topics A1–B6 · 35 questions each'
+                            : 'Topic-by-topic · 35 questions (12E / 13M / 10H)'}
                         </p>
                       </div>
-                      {!userProgress.completedAssessment && (
-                        <Button className="w-full" variant="outline">
-                          Start Assessment
-                        </Button>
-                      )}
+                      <Button className="w-full" variant="outline">
+                        {userProgress.completedAssessment ? 'Retake or next topic' : 'Start assessment'}
+                      </Button>
                     </div>
                   </Card>
                 </TooltipTrigger>

@@ -246,6 +246,97 @@ export function Results() {
       </div>
 
       <div className="container mx-auto px-4 py-8 space-y-6">
+        {lastSessionResults?.stageOneAssessment && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }}
+          >
+            <Card className="p-6 md:p-8 border-violet-500/30 bg-gradient-to-br from-violet-500/[0.07] to-background">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">
+                    Stage 1 · Topic assessment
+                  </p>
+                  <h2 className="text-xl font-bold mt-1">{lastSessionResults.stageOneAssessment.topicLabel}</h2>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-prose">
+                    {lastSessionResults.stageOneAssessment.narrative}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <p className="text-lg font-bold">
+                    {lastSessionResults.stageOneAssessment.statusBand === 'STRONG' && '✅ STRONG'}
+                    {lastSessionResults.stageOneAssessment.statusBand === 'AVERAGE' && '⚠️ AVERAGE'}
+                    {lastSessionResults.stageOneAssessment.statusBand === 'WEAK' && '❌ WEAK'}
+                    {lastSessionResults.stageOneAssessment.statusBand === 'CRITICAL' && '🚨 CRITICAL'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Raw score</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.stageOneAssessment.rawScore}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">First-try correct ÷ 35</p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Adjusted score</p>
+                  <p className="text-2xl font-bold text-primary">{lastSessionResults.stageOneAssessment.adjustedScore}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">+0.5 per medium wrong</p>
+                </div>
+                <div className="rounded-xl bg-amber-500/10 p-3 border border-amber-500/20">
+                  <p className="text-xs text-amber-800 dark:text-amber-200">Medium wrong 🟡</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.stageOneAssessment.mediumWrong}</p>
+                </div>
+                <div className="rounded-xl bg-rose-500/10 p-3 border border-rose-500/20">
+                  <p className="text-xs text-rose-800 dark:text-rose-200">Hard wrong 🔴</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.stageOneAssessment.hardWrong}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <div className="flex justify-between rounded-lg border border-border px-3 py-2">
+                  <span className="text-muted-foreground">Correct first try</span>
+                  <span className="font-semibold">{lastSessionResults.stageOneAssessment.correctFirstTry}</span>
+                </div>
+                <div className="flex justify-between rounded-lg border border-border px-3 py-2">
+                  <span className="text-muted-foreground">Skipped (practice Q)</span>
+                  <span className="font-semibold">{lastSessionResults.stageOneAssessment.skipped}</span>
+                </div>
+                <div className="flex justify-between rounded-lg border border-border px-3 py-2">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-semibold">{lastSessionResults.stageOneAssessment.totalQuestions}</span>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-border">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">First-try accuracy by tier</p>
+                <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                  <div className="rounded-lg bg-emerald-500/10 py-2">
+                    <div className="font-semibold">
+                      {lastSessionResults.stageOneAssessment.easyCorrect}/{lastSessionResults.stageOneAssessment.easyTotal}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">Easy</div>
+                  </div>
+                  <div className="rounded-lg bg-amber-500/10 py-2">
+                    <div className="font-semibold">
+                      {lastSessionResults.stageOneAssessment.mediumCorrect}/{lastSessionResults.stageOneAssessment.mediumTotal}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">Medium</div>
+                  </div>
+                  <div className="rounded-lg bg-rose-500/10 py-2">
+                    <div className="font-semibold">
+                      {lastSessionResults.stageOneAssessment.hardCorrect}/{lastSessionResults.stageOneAssessment.hardTotal}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">Hard</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
         {/* Performance Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Score Breakdown */}

@@ -1,8 +1,11 @@
 import { motion } from 'motion/react';
+import { useEffect, useState } from 'react';
 import { useApp } from '@/app/context/ExamContext';
 import { Button } from '@/app/components/ui/button';
-import { ArrowLeft, BookOpen, ClipboardList, ChevronRight } from 'lucide-react';
+import { ArrowLeft, BookOpen, ClipboardList, ChevronRight, ClipboardCheck } from 'lucide-react';
 import { SUBJECTS, type SubjectMeta } from '@/app/data/subjects';
+import { getCurrentUserId } from '@/app/services/userWrongQuestions';
+import { fetchCompletedAssessmentTopicCodes } from '@/app/services/assessmentStageOne';
 
 const SECTION_META = {
   A: {
@@ -22,15 +25,24 @@ const SECTION_META = {
 function SubjectCard({
   meta,
   index,
-  isPractice,
+  mode,
+  completedTopic,
   onPick,
 }: {
   meta: SubjectMeta;
   index: number;
-  isPractice: boolean;
+  mode: 'practice' | 'mock' | 'assessment';
+  completedTopic?: boolean;
   onPick: (key: string) => void;
 }) {
   const { Icon, label, desc, accentClass, iconBgClass } = meta;
+
+  const subtitle =
+    mode === 'practice'
+      ? '5 random questions'
+      : mode === 'mock'
+        ? 'Full topic mock'
+        : '35 questions · 12 easy / 13 medium / 10 hard';
 
   return (
     <motion.div
@@ -55,7 +67,10 @@ function SubjectCard({
             </div>
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{desc}</p>
             <span className="inline-block mt-2 text-xs font-medium text-muted-foreground">
-              {isPractice ? '5 random questions' : 'Full topic mock'}
+              {subtitle}
+              {mode === 'assessment' && completedTopic && (
+                <span className="ml-2 text-success font-semibold">· Completed before</span>
+              )}
             </span>
           </div>
         </div>
@@ -70,14 +85,31 @@ export function SubjectSelect() {
     subjectSelectFor,
     setSelectedPracticeSubject,
     setSelectedMockSubject,
+    setSelectedAssessmentTopic,
   } = useApp();
 
+  const [completedAssessmentTopics, setCompletedAssessmentTopics] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (subjectSelectFor !== 'assessment') return;
+    void (async () => {
+      const uid = await getCurrentUserId();
+      if (!uid) return;
+      const codes = await fetchCompletedAssessmentTopicCodes(uid);
+      setCompletedAssessmentTopics(codes);
+    })();
+  }, [subjectSelectFor]);
+
   const isPractice = subjectSelectFor === 'practice';
+  const isAssessment = subjectSelectFor === 'assessment';
 
   const handlePick = (subjectKey: string) => {
     if (isPractice) {
       setSelectedPracticeSubject(subjectKey);
       setCurrentScreen('practice');
+    } else if (isAssessment) {
+      setSelectedAssessmentTopic(subjectKey);
+      setCurrentScreen('assessment');
     } else {
       setSelectedMockSubject(subjectKey);
       setCurrentScreen('mock');
@@ -110,6 +142,10 @@ export function SubjectSelect() {
               <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
                 <BookOpen className="w-5 h-5 text-primary" />
               </div>
+            ) : isAssessment ? (
+              <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
+                <ClipboardCheck className="w-5 h-5 text-violet-600 dark:text-violet-400" />
+              </div>
             ) : (
               <div className="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center">
                 <ClipboardList className="w-5 h-5 text-warning" />
@@ -117,12 +153,18 @@ export function SubjectSelect() {
             )}
             <div>
               <h1 className="text-2xl md:text-3xl font-bold">
-                {isPractice ? 'Choose a topic' : 'Mock Test — Choose a topic'}
+                {isPractice
+                  ? 'Choose a topic'
+                  : isAssessment
+                    ? 'Stage 1 — Choose a topic'
+                    : 'Mock Test — Choose a topic'}
               </h1>
               <p className="text-muted-foreground text-sm">
                 {isPractice
                   ? '5 random questions per session · different mix each time'
-                  : 'Full question set for the chosen topic'}
+                  : isAssessment
+                    ? '35 questions per topic · first-try score + medium/hard wrong tracking'
+                    : 'Full question set for the chosen topic'}
               </p>
             </div>
           </div>
@@ -132,7 +174,8 @@ export function SubjectSelect() {
         <SubjectSection
           section="A"
           subjects={sectionA}
-          isPractice={isPractice}
+          mode={subjectSelectFor}
+          completedAssessmentTopics={completedAssessmentTopics}
           onPick={handlePick}
           globalOffset={0}
         />
@@ -143,7 +186,8 @@ export function SubjectSelect() {
         <SubjectSection
           section="B"
           subjects={sectionB}
-          isPractice={isPractice}
+          mode={subjectSelectFor}
+          completedAssessmentTopics={completedAssessmentTopics}
           onPick={handlePick}
           globalOffset={sectionA.length}
         />
@@ -155,13 +199,15 @@ export function SubjectSelect() {
 function SubjectSection({
   section,
   subjects,
-  isPractice,
+  mode,
+  completedAssessmentTopics,
   onPick,
   globalOffset,
 }: {
   section: 'A' | 'B';
   subjects: SubjectMeta[];
-  isPractice: boolean;
+  mode: 'practice' | 'mock' | 'assessment';
+  completedAssessmentTopics: string[];
   onPick: (key: string) => void;
   globalOffset: number;
 }) {
@@ -190,7 +236,8 @@ function SubjectSection({
             key={s.key}
             meta={s}
             index={globalOffset + i}
-            isPractice={isPractice}
+            mode={mode}
+            completedTopic={mode === 'assessment' && completedAssessmentTopics.includes(s.key)}
             onPick={onPick}
           />
         ))}

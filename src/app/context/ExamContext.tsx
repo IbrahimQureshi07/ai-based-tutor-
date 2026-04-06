@@ -44,6 +44,26 @@ interface AppContextType {
     byCategory: Record<string, { correct: number; total: number }>;
     /** Bank question IDs missed on first try (practice) — same list drives weak-area practice from Results */
     weakBankQuestionIds?: string[];
+    /** Stage 1 topic assessment (35 Q) — when set, Results shows full topic report */
+    stageOneAssessment?: {
+      topicCode: string;
+      topicLabel: string;
+      totalQuestions: number;
+      correctFirstTry: number;
+      mediumWrong: number;
+      hardWrong: number;
+      skipped: number;
+      rawScore: number;
+      adjustedScore: number;
+      statusBand: 'STRONG' | 'AVERAGE' | 'WEAK' | 'CRITICAL';
+      easyCorrect: number;
+      easyTotal: number;
+      mediumCorrect: number;
+      mediumTotal: number;
+      hardCorrect: number;
+      hardTotal: number;
+      narrative: string;
+    };
   } | null;
   setLastSessionResults: (v: AppContextType['lastSessionResults']) => void;
   /**
@@ -52,15 +72,18 @@ interface AppContextType {
    */
   pendingWeakPracticeBankIds: string[] | null;
   setPendingWeakPracticeBankIds: (v: string[] | null) => void;
-  /** Which test flow opened the subject picker (Practice vs Mock). */
-  subjectSelectFor: 'practice' | 'mock';
-  setSubjectSelectFor: (v: 'practice' | 'mock') => void;
+  /** Which test flow opened the subject picker. */
+  subjectSelectFor: 'practice' | 'mock' | 'assessment';
+  setSubjectSelectFor: (v: 'practice' | 'mock' | 'assessment') => void;
   /** Chosen topic for Practice Test (first 25 from sheet for that subject). */
   selectedPracticeSubject: string | null;
   setSelectedPracticeSubject: (v: string | null) => void;
   /** Chosen topic for Mock Test (all questions for that subject). */
   selectedMockSubject: string | null;
   setSelectedMockSubject: (v: string | null) => void;
+  /** Stage 1 assessment topic (`SUBJECTS[].key`). */
+  selectedAssessmentTopic: string | null;
+  setSelectedAssessmentTopic: (v: string | null) => void;
   /** Subjects whose practice test has been fully completed this session. */
   completedPracticeSubjects: string[];
   markPracticeSubjectDone: (subject: string) => void;
@@ -85,18 +108,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [startPracticeWithWeakAreas, setStartPracticeWithWeakAreas] = useState(false);
   const [restoredPracticeState, setRestoredPracticeState] = useState<{ questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; questionIds?: string[]; currentIndex: number } | null>(null);
   const [restoredAssessmentState, setRestoredAssessmentState] = useState<{ questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; currentIndex: number } | null>(null);
-  const [lastSessionResults, setLastSessionResults] = useState<{
-    total: number;
-    correct: number;
-    incorrect: number;
-    byDifficulty: Record<string, { correct: number; total: number }>;
-    byCategory: Record<string, { correct: number; total: number }>;
-    weakBankQuestionIds?: string[];
-  } | null>(null);
+  const [lastSessionResults, setLastSessionResults] = useState<AppContextType['lastSessionResults']>(null);
   const [pendingWeakPracticeBankIds, setPendingWeakPracticeBankIds] = useState<string[] | null>(null);
-  const [subjectSelectFor, setSubjectSelectFor] = useState<'practice' | 'mock'>('practice');
+  const [subjectSelectFor, setSubjectSelectFor] = useState<'practice' | 'mock' | 'assessment'>('practice');
   const [selectedPracticeSubject, setSelectedPracticeSubject] = useState<string | null>(null);
   const [selectedMockSubject, setSelectedMockSubject] = useState<string | null>(null);
+  const [selectedAssessmentTopic, setSelectedAssessmentTopic] = useState<string | null>(null);
   const [completedPracticeSubjects, setCompletedPracticeSubjects] = useState<string[]>([]);
 
   const markPracticeSubjectDone = (subject: string) => {
@@ -275,6 +292,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSelectedPracticeSubject,
         selectedMockSubject,
         setSelectedMockSubject,
+        selectedAssessmentTopic,
+        setSelectedAssessmentTopic,
         completedPracticeSubjects,
         markPracticeSubjectDone,
         activeTutorMcq,
