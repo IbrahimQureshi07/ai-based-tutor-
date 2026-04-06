@@ -23,8 +23,12 @@ import {
   emptyTierBreakdown,
   type AssessmentOutcomeKind,
 } from '@/app/utils/assessmentScoring';
-import { generateHint } from '@/app/services/aiService';
-import { ArrowLeft, Lightbulb, ChevronRight } from 'lucide-react';
+import { generateHint, generateSimilarQuestion } from '@/app/services/aiService';
+import { ArrowLeft, Lightbulb, ChevronRight, SkipForward } from 'lucide-react';
+
+function isSimilarId(id: string): boolean {
+  return id.startsWith('similar-');
+}
 
 export function StageOneAssessment({ topicKey }: { topicKey: string }) {
   const {
@@ -46,12 +50,14 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
   const [queueError, setQueueError] = useState<string | null>(null);
   const [attemptId, setAttemptId] = useState<string | null>(null);
 
+  const [similarQ, setSimilarQ] = useState<Question | null>(null);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
+  const [similarShowReveal, setSimilarShowReveal] = useState(false);
+
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [loadingHint, setLoadingHint] = useState(false);
-  const [showRevealAfterHard, setShowRevealAfterHard] = useState(false);
-  /** After first wrong: hint shown; user gets one more try on the same bank question. */
   const [bankHint, setBankHint] = useState<{ text: string } | null>(null);
 
   const statsRef = useRef({ cf: 0, mw: 0, hw: 0, sk: 0 });
@@ -102,9 +108,10 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
 
   const bankQ = banks[currentIndex];
   const atEnd = currentIndex >= banks.length;
+  const currentQ = similarQ ?? bankQ;
 
   useEffect(() => {
-    const q = bankQ;
+    const q = currentQ;
     if (questionsLoading || questionsError || !q || atEnd) {
       setActiveTutorMcq(null);
       return;
@@ -117,11 +124,12 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
       subject: q.subject || q.category,
     });
     return () => setActiveTutorMcq(null);
-  }, [bankQ, questionsLoading, questionsError, atEnd, setActiveTutorMcq]);
+  }, [currentQ, questionsLoading, questionsError, atEnd, setActiveTutorMcq]);
 
-  /** Hide correct answer until first-try correct, or after hard wrong reveal, or medium wrong auto-advance. */
   const hideCorrectAnswer =
-    showResult && !isCorrect && !showRevealAfterHard && bankHint === null;
+    !isCorrect &&
+    !similarShowReveal &&
+    ((similarQ === null && bankHint !== null) || (similarQ !== null && !similarShowReveal && !showResult));
 
   const recordAndInsert = useCallback(
     async (kind: AssessmentOutcomeKind, bankSlot: Question, tier: AssessmentTier) => {
@@ -153,15 +161,6 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
     },
     [attemptId]
   );
-
-  const advance = useCallback(() => {
-    setBankHint(null);
-    setShowRevealAfterHard(false);
-    setShowResult(false);
-    setSelectedOption(null);
-    setIsCorrect(false);
-    setCurrentIndex((i) => i + 1);
-  }, []);
 
   const finishTest = useCallback(async () => {
     const { cf, mw, hw, sk } = statsRef.current;
@@ -231,19 +230,78 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
     setSelectedAssessmentTopic,
   ]);
 
+  const leaveSlot = useCallback(
+    async (idx: number) => {
+      setBankHint(null);
+      setSimilarQ(null);
+      setSimilarShowReveal(false);
+      setShowResult(false);
+      setSelectedOption(null);
+      setIsCorrect(false);
+      if (idx >= banks.length - 1) {
+        await finishTest();
+      } else {
+        setCurrentIndex((i) => i + 1);
+      }
+    },
+    [banks.length, finishTest]
+  );
+
+  const loadSimilarAfterHard = async (tier: AssessmentTier) => {
+    if (!bankQ) return;
+    setLoadingSimilar(true);
+    try {
+      const similar = await generateSimilarQuestion(
+        bankQ.question,
+        bankQ.subject || bankQ.category,
+        bankQ.difficulty || 'medium'
+      );
+      const newQ: Question = {
+        id: `similar-${Date.now()}`,
+        question: similar.question,
+        options: similar.options,
+        correctAnswer: similar.correctAnswer,
+        explanation: similar.explanation,
+        whyWrong: {},
+        subject: similar.category,
+        category: similar.category,
+        difficulty: bankQ.difficulty || 'medium',
+      };
+      setSimilarQ(newQ);
+      setBankHint(null);
+      setShowResult(false);
+      setSelectedOption(null);
+      setIsCorrect(false);
+      setSimilarShowReveal(false);
+    } catch {
+      await leaveSlot(currentIndex);
+    } finally {
+      setLoadingSimilar(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (selectedOption === null || !bankQ || atEnd) return;
     const tier = tiers[currentIndex];
+
+    if (similarQ) {
+      const correct = selectedOption === similarQ.correctAnswer;
+      if (correct) {
+        await leaveSlot(currentIndex);
+        return;
+      }
+      setIsCorrect(false);
+      setShowResult(true);
+      setSimilarShowReveal(true);
+      return;
+    }
+
     const correct = selectedOption === bankQ.correctAnswer;
 
     if (bankHint === null) {
       if (correct) {
         await recordAndInsert('correct_first', bankQ, tier);
-        if (currentIndex >= banks.length - 1) {
-          await finishTest();
-        } else {
-          advance();
-        }
+        await leaveSlot(currentIndex);
         return;
       }
       setLoadingHint(true);
@@ -270,26 +328,26 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
 
     if (correct) {
       await recordAndInsert('medium_wrong', bankQ, tier);
-      if (currentIndex >= banks.length - 1) {
-        await finishTest();
-      } else {
-        advance();
-      }
+      await leaveSlot(currentIndex);
       return;
     }
 
-    setIsCorrect(false);
-    setShowResult(true);
-    setShowRevealAfterHard(true);
     await recordAndInsert('hard_wrong', bankQ, tier);
+    await loadSimilarAfterHard(tier);
   };
 
-  const handleNextAfterHard = async () => {
-    if (currentIndex >= banks.length - 1) {
-      await finishTest();
-    } else {
-      advance();
-    }
+  const handleSkipSimilar = async () => {
+    if (!similarQ || !bankQ) return;
+    statsRef.current.sk += 1;
+    setSimilarQ(null);
+    setSimilarShowReveal(false);
+    setShowResult(false);
+    setSelectedOption(null);
+    await leaveSlot(currentIndex);
+  };
+
+  const handleNextAfterSimilarWrong = async () => {
+    await leaveSlot(currentIndex);
   };
 
   const goBack = () => {
@@ -299,26 +357,28 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
   };
 
   const getOptionClass = (index: number) => {
-    if (!showResult && !showRevealAfterHard) {
+    if (!showResult && !similarShowReveal) {
       return selectedOption === index
         ? 'border-primary bg-primary/10 ring-2 ring-primary'
         : 'border-border hover:border-primary/50 hover:bg-muted/50';
     }
-    const reveal = isCorrect || showRevealAfterHard;
-    if (reveal && index === bankQ.correctAnswer) {
+    const reveal = isCorrect || similarShowReveal;
+    if (reveal && index === currentQ.correctAnswer) {
       return 'border-success bg-success/10 ring-2 ring-success';
     }
     if (index === selectedOption && !isCorrect && showResult) {
       return 'border-destructive bg-destructive/10 ring-2 ring-destructive';
     }
-    if (!reveal && hideCorrectAnswer && index === bankQ.correctAnswer) {
+    if (!reveal && hideCorrectAnswer && index === currentQ.correctAnswer) {
       return 'border-border opacity-60';
     }
     return 'border-border opacity-50';
   };
 
   const optionsDisabled =
-    showRevealAfterHard || (showResult && bankHint === null);
+    similarShowReveal ||
+    loadingSimilar ||
+    (showResult && similarQ === null && bankHint === null);
 
   if (questionsLoading || loadingQueue) {
     return (
@@ -345,6 +405,7 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
   }
 
   const progressPct = ((currentIndex + 1) / STAGE_ONE_TOPIC_TOTAL) * 100;
+  const showSkip = similarQ !== null && isSimilarId(similarQ.id) && !similarShowReveal;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex flex-col">
@@ -367,40 +428,84 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
       <div className="flex-1 container mx-auto px-4 py-8 max-w-3xl">
         <AnimatePresence mode="wait">
           <motion.div
-            key={`${currentIndex}-${bankHint ? 'hint' : 'clean'}`}
+            key={`${currentIndex}-${similarQ?.id ?? 'bank'}-${bankHint ? 'h' : ''}`}
             initial={{ opacity: 0, x: 12 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -12 }}
             transition={{ duration: 0.25 }}
           >
             <Card className="p-6 md:p-8 mb-6">
-              <div className="flex items-start justify-between gap-3 mb-6">
+              <div className="flex items-start justify-between gap-3 mb-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap gap-2 mb-2">
                     <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
                       Stage 1 Assessment
                     </span>
-                    <span className="px-3 py-1 rounded-full bg-muted text-xs font-medium capitalize">
-                      {tiers[currentIndex]} · Bank
-                    </span>
-                    {bankHint && !showRevealAfterHard && (
+                    {!similarQ && (
+                      <span className="px-3 py-1 rounded-full bg-muted text-xs font-medium capitalize">
+                        {tiers[currentIndex]} · Bank
+                      </span>
+                    )}
+                    {similarQ && (
                       <span className="px-3 py-1 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 text-xs font-medium">
+                        Practice variant
+                      </span>
+                    )}
+                    {bankHint && !similarQ && (
+                      <span className="px-3 py-1 rounded-full bg-violet-500/15 text-violet-800 dark:text-violet-300 text-xs font-medium">
                         2nd try
                       </span>
                     )}
                   </div>
-                  <h2 className="text-xl md:text-2xl font-semibold">{bankQ.question}</h2>
-                  {bankHint && !showRevealAfterHard && (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Read the hint below, then choose your answer again. Correct after hint counts as a medium wrong;
-                      still wrong counts as a hard wrong.
+                  <h2 className="text-xl md:text-2xl font-semibold">{currentQ.question}</h2>
+
+                  {bankHint && !similarQ && (
+                    <p className="text-xs text-muted-foreground/90 mt-2 leading-relaxed">
+                      A hint is shown below — read it, then select your answer again and press{' '}
+                      <span className="font-medium text-foreground">Submit answer</span>. If you get it right after the
+                      hint, it counts as a medium wrong; if still wrong, you&apos;ll get a related practice question
+                      you can skip.
+                    </p>
+                  )}
+
+                  {similarQ && !similarShowReveal && (
+                    <p className="text-xs text-muted-foreground/90 mt-2">
+                      Related practice question — answer if you want, or use Skip to move on (counts as skipped).
                     </p>
                   )}
                 </div>
+                {showSkip && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 gap-1 border-dashed"
+                    onClick={() => void handleSkipSimilar()}
+                  >
+                    <SkipForward className="w-4 h-4" />
+                    Skip
+                  </Button>
+                )}
               </div>
 
+              {bankHint && bankHint.text && !similarQ && (
+                <div className="mb-5 p-4 rounded-xl bg-warning/10 border border-warning/30 flex gap-3">
+                  <Lightbulb className="w-5 h-5 text-warning shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-semibold text-sm text-warning mb-1">Hint</h4>
+                    <p className="text-sm text-muted-foreground">
+                      {loadingHint ? 'Getting a hint…' : bankHint.text}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {loadingSimilar && (
+                <p className="text-sm text-muted-foreground mb-4">Loading related practice question…</p>
+              )}
+
               <div className="space-y-3 mb-6">
-                {bankQ.options.map((option, index) => (
+                {currentQ.options.map((option, index) => (
                   <button
                     key={index}
                     type="button"
@@ -411,7 +516,7 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
                     <div className="flex items-center gap-3">
                       <div
                         className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0 ${
-                          (isCorrect || showRevealAfterHard) && index === bankQ.correctAnswer
+                          (isCorrect || similarShowReveal) && index === currentQ.correctAnswer
                             ? 'bg-success text-success-foreground'
                             : showResult && index === selectedOption && !isCorrect
                               ? 'bg-destructive text-destructive-foreground'
@@ -428,44 +533,28 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
                 ))}
               </div>
 
-              {bankHint && bankHint.text && !showRevealAfterHard && (
-                <div className="mb-6 p-4 rounded-xl bg-warning/10 border border-warning/30 flex gap-3">
-                  <Lightbulb className="w-5 h-5 text-warning shrink-0 mt-0.5" />
-                  <div>
-                    <h4 className="font-semibold text-sm text-warning mb-1">Hint</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {loadingHint ? 'Getting a hint…' : bankHint.text}
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {showResult && showRevealAfterHard && (
-                <div className="mb-6 p-4 rounded-xl border border-destructive/30 bg-destructive/5 text-sm">
-                  <p className="font-medium text-destructive mb-1">Hard wrong</p>
-                  <p className="text-muted-foreground mb-2">
-                    After the hint, the answer was still incorrect. Review the explanation, then continue.
-                  </p>
+              {similarShowReveal && similarQ && (
+                <div className="mb-6 p-4 rounded-xl border border-border bg-muted/30 text-sm">
                   <p className="font-medium mb-1">Explanation</p>
-                  <p className="text-muted-foreground">{bankQ.explanation}</p>
+                  <p className="text-muted-foreground">{similarQ.explanation}</p>
                 </div>
               )}
 
               <div className="flex flex-wrap justify-end gap-2">
-                {showRevealAfterHard && (
-                  <Button onClick={() => void handleNextAfterHard()} className="gap-2">
+                {similarShowReveal && (
+                  <Button onClick={() => void handleNextAfterSimilarWrong()} className="gap-2">
                     {currentIndex >= banks.length - 1 ? 'View results' : 'Next question'}
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 )}
 
-                {!showRevealAfterHard && (
+                {!similarShowReveal && !loadingSimilar && (
                   <Button
                     onClick={() => void handleSubmit()}
-                    disabled={selectedOption === null || loadingHint}
+                    disabled={selectedOption === null || loadingHint || loadingSimilar}
                     className="gap-2"
                   >
-                    {loadingHint ? 'Getting hint…' : bankHint ? 'Submit answer' : 'Submit'}
+                    {loadingHint ? 'Getting hint…' : bankHint && !similarQ ? 'Submit answer' : 'Submit'}
                   </Button>
                 )}
               </div>
