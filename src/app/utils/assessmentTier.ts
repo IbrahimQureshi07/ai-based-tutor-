@@ -3,16 +3,14 @@ import { fallbackBandFromLegacyDifficulty } from '@/app/constants/levelBands';
 
 export type AssessmentTier = 'easy' | 'medium' | 'hard';
 
-/** Map 6 DB bands → 3 assessment tiers. */
+/** Bands are already 3-tier (easy | medium | hard); identity for assessment queue. */
 export function levelBandToAssessmentTier(band: LevelBandSlug): AssessmentTier {
-  if (band === 'easy' || band === 'above_easy') return 'easy';
-  if (band === 'medium' || band === 'above_medium') return 'medium';
-  return 'hard';
+  return band;
 }
 
 export function tierFromQuestion(
   levelMap: Map<string, LevelBandSlug>,
-  q: { id: string; difficulty: string }
+  q: { id: string; difficulty?: string }
 ): AssessmentTier {
   const fromDb = levelMap.get(q.id);
   const band = fromDb ?? fallbackBandFromLegacyDifficulty(q.difficulty);

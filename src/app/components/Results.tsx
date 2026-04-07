@@ -19,6 +19,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 import { useEffect, useState } from 'react';
 import { SUBJECTS, type SubjectMeta } from '@/app/data/subjects';
+import { StageTwoProgressAnalyticsSection } from '@/app/components/StageTwoProgressAnalyticsSection';
 import { LEVEL_SLUGS, LEVEL_BAND_LABELS, type LevelBandSlug } from '@/app/constants/levelBands';
 
 function TopicPracticeCard({
@@ -142,7 +143,7 @@ export function Results() {
     return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
-  // Level-band breakdown (six bands); legacy sessions may only have easy/medium/hard keys
+  // Level-band breakdown (three bands); legacy session keys normalize to easy | medium | hard
   const barData = lastSessionResults?.byDifficulty
     ? [
         ...LEVEL_SLUGS.filter((d) => lastSessionResults.byDifficulty[d]?.total).map((d) => ({
@@ -335,6 +336,103 @@ export function Results() {
               </div>
             </Card>
           </motion.div>
+        )}
+
+        {lastSessionResults?.stageTwoAssessment && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }}
+          >
+            <Card className="p-6 md:p-8 border-teal-500/30 bg-gradient-to-br from-teal-500/[0.07] to-background">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400">
+                    Stage 2 · Cross-topic preparation
+                  </p>
+                  <h2 className="text-xl font-bold mt-1">{lastSessionResults.stageTwoAssessment.topicLabel}</h2>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-prose">
+                    {lastSessionResults.stageTwoAssessment.narrative}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <p className="text-lg font-bold">
+                    {lastSessionResults.stageTwoAssessment.statusBand === 'STRONG' && '✅ STRONG'}
+                    {lastSessionResults.stageTwoAssessment.statusBand === 'AVERAGE' && '⚠️ AVERAGE'}
+                    {lastSessionResults.stageTwoAssessment.statusBand === 'WEAK' && '❌ WEAK'}
+                    {lastSessionResults.stageTwoAssessment.statusBand === 'CRITICAL' && '🚨 CRITICAL'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Raw score</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.stageTwoAssessment.rawScore}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    First-try correct ÷ {lastSessionResults.stageTwoAssessment.totalQuestions}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Adjusted score</p>
+                  <p className="text-2xl font-bold text-primary">{lastSessionResults.stageTwoAssessment.adjustedScore}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">+0.5 per medium wrong</p>
+                </div>
+                <div className="rounded-xl bg-amber-500/10 p-3 border border-amber-500/20">
+                  <p className="text-xs text-amber-800 dark:text-amber-200">Medium wrong 🟡</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.stageTwoAssessment.mediumWrong}</p>
+                </div>
+                <div className="rounded-xl bg-rose-500/10 p-3 border border-rose-500/20">
+                  <p className="text-xs text-rose-800 dark:text-rose-200">Hard wrong 🔴</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.stageTwoAssessment.hardWrong}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+                <div className="flex justify-between rounded-lg border border-border px-3 py-2">
+                  <span className="text-muted-foreground">Correct first try</span>
+                  <span className="font-semibold">{lastSessionResults.stageTwoAssessment.correctFirstTry}</span>
+                </div>
+                <div className="flex justify-between rounded-lg border border-border px-3 py-2">
+                  <span className="text-muted-foreground">Skipped (practice Q)</span>
+                  <span className="font-semibold">{lastSessionResults.stageTwoAssessment.skipped}</span>
+                </div>
+                <div className="flex justify-between rounded-lg border border-border px-3 py-2">
+                  <span className="text-muted-foreground">Total</span>
+                  <span className="font-semibold">{lastSessionResults.stageTwoAssessment.totalQuestions}</span>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-border">
+                <p className="text-xs font-semibold text-muted-foreground mb-2">First-try accuracy by tier</p>
+                <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                  <div className="rounded-lg bg-emerald-500/10 py-2">
+                    <div className="font-semibold">
+                      {lastSessionResults.stageTwoAssessment.easyCorrect}/{lastSessionResults.stageTwoAssessment.easyTotal}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">Easy</div>
+                  </div>
+                  <div className="rounded-lg bg-amber-500/10 py-2">
+                    <div className="font-semibold">
+                      {lastSessionResults.stageTwoAssessment.mediumCorrect}/{lastSessionResults.stageTwoAssessment.mediumTotal}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">Medium</div>
+                  </div>
+                  <div className="rounded-lg bg-rose-500/10 py-2">
+                    <div className="font-semibold">
+                      {lastSessionResults.stageTwoAssessment.hardCorrect}/{lastSessionResults.stageTwoAssessment.hardTotal}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground">Hard</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
+        {lastSessionResults?.stageTwoProgressAnalytics && (
+          <StageTwoProgressAnalyticsSection data={lastSessionResults.stageTwoProgressAnalytics} />
         )}
 
         {/* Performance Overview */}

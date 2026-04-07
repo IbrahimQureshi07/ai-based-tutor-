@@ -20,7 +20,7 @@ function shuffleInPlace<T>(arr: T[]): T[] {
 /**
  * Pick up to `targetCount` bank questions so each level band is represented as evenly as the pool allows.
  * Uses `question_levels` when present; otherwise legacy `difficulty` → band fallback.
- * Order: all picked easy first, then above_easy, … through above_hard (shuffle only within each band).
+ * Order: easy, then medium, then hard (shuffle only within each band).
  */
 export async function selectQuestionsBalancedByBands(
   candidates: Question[],

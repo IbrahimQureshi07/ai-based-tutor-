@@ -8,6 +8,12 @@ export function computeRawScorePercent(correctFirstTry: number): number {
   return Math.round((correctFirstTry / STAGE_ONE_TOPIC_TOTAL) * 1000) / 10;
 }
 
+/** Stage 2 (variable-length queue) first-try % */
+export function computeRawScorePercentForTotal(correctFirstTry: number, totalQuestions: number): number {
+  if (totalQuestions <= 0) return 0;
+  return Math.round((correctFirstTry / totalQuestions) * 1000) / 10;
+}
+
 export function computeAdjustedScore(rawPercent: number, mediumWrongs: number): number {
   return Math.round((rawPercent + mediumWrongs * 0.5) * 10) / 10;
 }

@@ -18,7 +18,7 @@ function shuffleInPlace<T>(arr: T[]): T[] {
   return a;
 }
 
-/** Order: easy → above_easy → … → above_hard; shuffle only within each band. */
+/** Order: easy → medium → hard; shuffle only within each band. */
 export async function selectQuestionsAdaptiveByBands(
   candidates: Question[],
   targetCount: number,

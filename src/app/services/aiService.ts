@@ -11,6 +11,7 @@
 import type { TutorActiveMcq } from '@/app/utils/tutorOfficialContext';
 import {
   LEVEL_SLUGS,
+  legacyBandIfExplicitEasyOrHard,
   normalizeLevelBandSlug,
   type LevelBandSlug,
 } from '@/app/constants/levelBands';
@@ -30,13 +31,19 @@ interface QuestionGenerationParams {
   similarTo?: string; // For generating similar questions
 }
 
+type CallOpenAiOptions = {
+  /** Forces valid JSON object output (gpt-4o-mini+); prompt must mention JSON. */
+  jsonObject?: boolean;
+};
+
 /**
  * Call OpenAI API for chat completion
  */
 async function callOpenAI(
   messages: ChatMessage[],
   temperature: number = 0.7,
-  maxTokens: number = 500
+  maxTokens: number = 500,
+  options?: CallOpenAiOptions
 ): Promise<string> {
   if (!OPENAI_API_KEY) {
     throw new Error('OpenAI API key is not configured. Please add VITE_OPENAI_API_KEY to your .env file.');
@@ -54,6 +61,7 @@ async function callOpenAI(
         messages,
         temperature,
         max_tokens: maxTokens,
+        ...(options?.jsonObject ? { response_format: { type: 'json_object' } } : {}),
       }),
     });
 
@@ -372,53 +380,216 @@ Reply with ONLY the hint text, no labels or quotes.`;
   return (hint || 'Read the question again and check each option carefully.').trim();
 }
 
+function pickLevelScalarFromJson(v: unknown): LevelBandSlug | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === 'string') {
+    const t = v.trim();
+    if (!t) return null;
+    return normalizeLevelBandSlug(t);
+  }
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    const n = Math.round(v);
+    if (n >= 0 && n <= 2) return LEVEL_SLUGS[n];
+    if (n >= 1 && n <= 3) return LEVEL_SLUGS[n - 1];
+  }
+  return null;
+}
+
+function pickLevelFromClassifyJsonObject(obj: Record<string, unknown>): LevelBandSlug | null {
+  const lower = new Map<string, unknown>();
+  for (const [k, v] of Object.entries(obj)) {
+    lower.set(k.toLowerCase(), v);
+  }
+  for (const k of ['level', 'difficulty', 'band', 'difficulty_band']) {
+    const band = pickLevelScalarFromJson(lower.get(k));
+    if (band !== null) return band;
+  }
+  return null;
+}
+
 /**
- * Classify a bank-style MCQ into one of six level bands (for UI + adaptive analytics).
+ * Extract easy | medium | hard from model output (JSON mode, markdown fences, or loose text).
  */
-export async function classifyQuestionLevelBand(
+function parseLevelFromClassifyResponse(raw: string): LevelBandSlug | null {
+  let s = raw.trim();
+  const fence = s.match(/^```(?:json)?\s*([\s\S]*?)```$/i);
+  if (fence) s = fence[1].trim();
+
+  const tryJson = (text: string): LevelBandSlug | null => {
+    try {
+      const obj = JSON.parse(text) as Record<string, unknown>;
+      const picked = pickLevelFromClassifyJsonObject(obj);
+      if (picked !== null) return picked;
+    } catch {
+      return null;
+    }
+    return null;
+  };
+
+  const fromWhole = tryJson(s);
+  if (fromWhole) return fromWhole;
+
+  const brace = s.match(/\{[\s\S]*\}/);
+  if (brace) {
+    const fromBrace = tryJson(brace[0]);
+    if (fromBrace) return fromBrace;
+  }
+
+  const quoted = s.match(/"level"\s*:\s*"([^"]+)"/i);
+  if (quoted) return normalizeLevelBandSlug(quoted[1]);
+
+  const numQuoted = s.match(/"level"\s*:\s*(-?\d+)/i);
+  if (numQuoted) {
+    const band = pickLevelScalarFromJson(Number(numQuoted[1]));
+    if (band !== null) return band;
+  }
+
+  const word = s.match(/\b(easy|medium|hard)\b/i);
+  if (word) return normalizeLevelBandSlug(word[1]);
+
+  return null;
+}
+
+async function classifyLevelPlainTextFallback(
   questionText: string,
   options: string[],
   categorySubject: string
-): Promise<LevelBandSlug> {
-  const opts = options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n');
+): Promise<LevelBandSlug | null> {
+  const optsLines = options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n');
   const allowed = LEVEL_SLUGS.join(', ');
-  const prompt = `Classify this multiple-choice exam question into exactly ONE difficulty band.
+  const prompt = `Difficulty for this MCQ (one of: ${allowed} only).
 
-Bands (lowest → highest demand):
-- easy: basic recall, straightforward
-- above_easy: simple reasoning one step beyond recall
-- medium: typical exam reasoning
-- above_medium: multi-step or subtle distinctions
-- hard: demanding analysis or exceptions
-- above_hard: very challenging, expert-level
-
-Context / category: ${categorySubject}
+Category: ${categorySubject}
 
 Question:
 ${questionText}
 
 Options:
-${opts}
-
-Reply with ONLY this JSON (no markdown): {"level":"<one of: ${allowed}>"}`;
+${optsLines}`;
 
   const messages: ChatMessage[] = [
     {
       role: 'system',
-      content: 'You reply with only valid JSON: {"level":"..."}. The level must be one of the allowed slugs exactly.',
+      content: `Reply with exactly one word from the list: ${allowed}. No punctuation, no JSON, no explanation.`,
     },
     { role: 'user', content: prompt },
   ];
 
   try {
-    const response = await callOpenAI(messages, 0.2, 100);
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    const jsonStr = jsonMatch ? jsonMatch[0] : response;
-    const parsed = JSON.parse(jsonStr) as { level?: string };
-    return normalizeLevelBandSlug(parsed.level);
+    const response = await callOpenAI(messages, 0.25, 32);
+    const m = response.trim().match(/\b(easy|medium|hard)\b/i);
+    if (m) return normalizeLevelBandSlug(m[1]);
   } catch {
-    return 'medium';
+    /* ignore */
   }
+  return null;
+}
+
+export type ClassifyLevelOptions = {
+  /** When the model output cannot be parsed, use bank row difficulty before defaulting to medium. */
+  legacyDifficulty?: string;
+};
+
+/**
+ * Anchors the model to this product's easy / medium / hard scale (real estate exam MCQs).
+ * Each block ends with the expected JSON shape for that example.
+ */
+const CLASSIFY_LEVEL_FEW_SHOT = `Here are calibrated examples from the same exam-prep style. Match their spirit when labeling new questions.
+
+--- Example (level: easy) ---
+Question: Real property can become personal property by a process called:
+A. Attachment
+B. Accretion
+C. Hypothecation
+D. Severance
+Correct answer: Severance. Severance detaches an item from the land (e.g. cutting a tree); it becomes personal property.
+Expected output: {"level":"easy"}
+
+--- Example (level: easy) ---
+Question: The right of eminent domain refers to:
+A. The government's right to acquire or authorize others to acquire title to property for public use
+B. An institution or individual acquiring land by grant from the government
+C. An organization's right to condemn property pending a community improvement
+D. The right of every American citizen to own property
+Correct answer: A. Core definition of government power for public use.
+Expected output: {"level":"easy"}
+
+--- Example (level: medium) ---
+Question: The term "real property" refers to what?
+A. Just the land itself
+B. The land and any attachments or improvements
+C. Land, improvements, and the bundle of rights of ownership
+D. The bundle of rights of ownership only
+Correct answer: C. Combines land, improvements, and rights — typical multi-part definition students must distinguish from partial choices.
+Expected output: {"level":"medium"}
+
+--- Example (level: hard) ---
+Question: Littoral rights are:
+A. Rights that govern lakefront or oceanfront property
+B. Rights that have to do with flowing water like rivers
+C. The rights to the water beneath a property
+D. The right to collect rainwater on a property
+Correct answer: A. Requires knowing littoral vs riparian vs other water-right concepts and similar-looking distractors.
+Expected output: {"level":"hard"}
+`;
+
+/**
+ * Classify a bank-style MCQ into easy | medium | hard (for UI + adaptive analytics).
+ */
+export async function classifyQuestionLevelBand(
+  questionText: string,
+  options: string[],
+  categorySubject: string,
+  opts?: ClassifyLevelOptions
+): Promise<LevelBandSlug> {
+  const optsLines = options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n');
+  const allowed = LEVEL_SLUGS.join(', ');
+  const prompt = `${CLASSIFY_LEVEL_FEW_SHOT}
+
+Now classify THIS question only. Return a JSON object with a single key "level" (string). The value MUST be exactly one of: ${allowed}
+
+Use the examples above as anchors:
+- easy: straight definitions, single-concept recall, obvious distinction between options.
+- medium: need to combine ideas or pick the most complete correct statement among plausible options.
+- hard: subtle distinctions (similar terms), exceptions, or multi-concept traps that confuse many students.
+
+Category / context: ${categorySubject}
+
+Question:
+${questionText}
+
+Options:
+${optsLines}`;
+
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content: `You output only a JSON object with key "level" whose value is one of: ${allowed}. No markdown fences, no extra keys, no explanation.`,
+    },
+    { role: 'user', content: prompt },
+  ];
+
+  const explicitLegacy = legacyBandIfExplicitEasyOrHard(opts?.legacyDifficulty);
+
+  let jsonBand: LevelBandSlug | null = null;
+  try {
+    const response = await callOpenAI(messages, 0.35, 320, { jsonObject: true });
+    jsonBand = parseLevelFromClassifyResponse(response);
+    if (jsonBand !== null) return jsonBand;
+    console.warn('[classifyQuestionLevelBand] JSON parse miss; plain-text retry.', response.slice(0, 160));
+  } catch (e) {
+    console.warn('[classifyQuestionLevelBand] Primary classify failed; plain-text retry.', e);
+  }
+
+  try {
+    const plain = await classifyLevelPlainTextFallback(questionText, options, categorySubject);
+    if (plain !== null) return plain;
+  } catch {
+    /* ignore */
+  }
+
+  if (explicitLegacy !== undefined) return explicitLegacy;
+  return 'medium';
 }
 
 /**

@@ -64,6 +64,57 @@ interface AppContextType {
       hardTotal: number;
       narrative: string;
     };
+    /** Stage 2 cross-topic preparation (variable length, up to 110) */
+    stageTwoAssessment?: {
+      topicCode: string;
+      topicLabel: string;
+      totalQuestions: number;
+      correctFirstTry: number;
+      mediumWrong: number;
+      hardWrong: number;
+      skipped: number;
+      rawScore: number;
+      adjustedScore: number;
+      statusBand: 'STRONG' | 'AVERAGE' | 'WEAK' | 'CRITICAL';
+      easyCorrect: number;
+      easyTotal: number;
+      mediumCorrect: number;
+      mediumTotal: number;
+      hardCorrect: number;
+      hardTotal: number;
+      narrative: string;
+    };
+    /** Stage 2 only: per-topic Stage 1 snapshot vs this Stage 2 run (before/after analytics) */
+    stageTwoProgressAnalytics?: {
+      topicsCompared: Array<{
+        topicCode: string;
+        topicLabel: string;
+        stageOneHasAttempt: boolean;
+        stageOneCorrectFirstTry: number;
+        stageOneMediumWrong: number;
+        stageOneHardWrong: number;
+        stageOneSkipped: number;
+        stageOneTotalQuestions: number;
+        stageOneRawScore: number;
+        stageTwoSlotCount: number;
+        stageTwoCorrectFirstTry: number;
+        stageTwoMediumWrong: number;
+        stageTwoHardWrong: number;
+        stageTwoSkipped: number;
+      }>;
+      summary: {
+        stageOneTopicsAttempted: number;
+        /** Sum of first-try correct ÷ sum of question totals (topics with a completed Stage 1) */
+        stageOneWeightedFirstTryPercent: number | null;
+        /** Arithmetic mean of per-topic first-try % (attempted topics only) */
+        stageOneAvgFirstTryPercent: number | null;
+        stageOneSkipsSum: number;
+        stageTwoTotalSlots: number;
+        stageTwoCorrectFirstTry: number;
+        stageTwoFirstTryPercent: number;
+        stageTwoSkippedTotal: number;
+      };
+    };
   } | null;
   setLastSessionResults: (v: AppContextType['lastSessionResults']) => void;
   /**
@@ -304,6 +355,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     </AppContext.Provider>
   );
 }
+
+export type StageTwoProgressAnalyticsPayload = NonNullable<
+  NonNullable<AppContextType['lastSessionResults']>['stageTwoProgressAnalytics']
+>;
 
 export function useApp() {
   const context = useContext(AppContext);

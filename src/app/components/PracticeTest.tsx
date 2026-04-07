@@ -104,7 +104,7 @@ export function PracticeTest({ questionLimit, assessmentMode }: PracticeTestProp
   const [subjectPracticeNoMatch, setSubjectPracticeNoMatch] = useState(false);
   /** Number of test slots when session started (matches Results "Questions" total). */
   const initialPracticeSlotCountRef = useRef(0);
-  /** First submit only per slot index — drives Results correct/incorrect & weak areas (six bands). */
+  /** First submit only per slot index — drives Results correct/incorrect & weak areas (three bands). */
   const firstTryBySlotRef = useRef(
     new Map<number, { correct: boolean; category: string; levelBand: LevelBandSlug }>()
   );

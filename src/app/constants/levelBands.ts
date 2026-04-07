@@ -1,56 +1,67 @@
-/** Canonical level slugs stored in DB / GPT output (snake_case). */
-export const LEVEL_SLUGS = [
-  'easy',
-  'above_easy',
-  'medium',
-  'above_medium',
-  'hard',
-  'above_hard',
-] as const;
+/** Canonical level slugs stored in DB / GPT output (snake_case). Only three bands. */
+export const LEVEL_SLUGS = ['easy', 'medium', 'hard'] as const;
 
 export type LevelBandSlug = (typeof LEVEL_SLUGS)[number];
 
-/** User-facing labels (no "+"). */
+/** User-facing labels. */
 export const LEVEL_BAND_LABELS: Record<LevelBandSlug, string> = {
   easy: 'Easy',
-  above_easy: 'Above easy',
   medium: 'Medium',
-  above_medium: 'Above medium',
   hard: 'Hard',
-  above_hard: 'Above hard',
 };
 
 export const LEVEL_BAND_PILL_CLASSES: Record<LevelBandSlug, string> = {
   easy: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400',
-  above_easy: 'bg-teal-500/15 text-teal-800 dark:text-teal-300',
   medium: 'bg-amber-500/15 text-amber-800 dark:text-amber-300',
-  above_medium: 'bg-orange-500/15 text-orange-800 dark:text-orange-300',
   hard: 'bg-rose-500/15 text-rose-800 dark:text-rose-300',
-  above_hard: 'bg-destructive/15 text-destructive',
 };
 
 export function isLevelBandSlug(s: string): s is LevelBandSlug {
   return (LEVEL_SLUGS as readonly string[]).includes(s);
 }
 
+/**
+ * Normalize any raw label (including legacy 6-band rows) to one of easy | medium | hard.
+ */
 export function normalizeLevelBandSlug(raw: string | null | undefined): LevelBandSlug {
   if (!raw) return 'medium';
   const t = raw.trim().toLowerCase().replace(/\s+/g, '_');
-  const aliases: Record<string, LevelBandSlug> = {
+
+  const legacyToCanonical: Record<string, LevelBandSlug> = {
     easy: 'easy',
-    above_easy: 'above_easy',
-    'above easy': 'above_easy',
-    easy_above: 'above_easy',
+    above_easy: 'easy',
+    'above easy': 'easy',
+    easy_above: 'easy',
+    simple: 'easy',
+    basic: 'easy',
+    beginner: 'easy',
+    recall: 'easy',
+    straightforward: 'easy',
+    trivial: 'easy',
+
     medium: 'medium',
-    above_medium: 'above_medium',
-    'above medium': 'above_medium',
-    medium_above: 'above_medium',
+    above_medium: 'medium',
+    'above medium': 'medium',
+    medium_above: 'medium',
+    moderate: 'medium',
+    intermediate: 'medium',
+    standard: 'medium',
+    typical: 'medium',
+    average: 'medium',
+
     hard: 'hard',
-    above_hard: 'above_hard',
-    'above hard': 'above_hard',
-    hard_above: 'above_hard',
+    above_hard: 'hard',
+    'above hard': 'hard',
+    hard_above: 'hard',
+    challenging: 'hard',
+    difficult: 'hard',
+    tricky: 'hard',
+    advanced: 'hard',
+    demanding: 'hard',
+    expert: 'hard',
   };
-  if (aliases[t]) return aliases[t];
+
+  if (legacyToCanonical[t]) return legacyToCanonical[t];
   if (isLevelBandSlug(t)) return t;
   return 'medium';
 }
@@ -61,6 +72,18 @@ export function fallbackBandFromLegacyDifficulty(
   if (d === 'easy') return 'easy';
   if (d === 'hard') return 'hard';
   return 'medium';
+}
+
+/**
+ * Only easy/hard from a real bank column are treated as authoritative.
+ * `medium` / missing / unknown → undefined (do not use as fake “legacy” for GPT fallback).
+ */
+export function legacyBandIfExplicitEasyOrHard(
+  d: 'easy' | 'medium' | 'hard' | string | undefined
+): LevelBandSlug | undefined {
+  if (d === 'easy') return 'easy';
+  if (d === 'hard') return 'hard';
+  return undefined;
 }
 
 export function isEphemeralQuestionId(id: string): boolean {

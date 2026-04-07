@@ -7,6 +7,7 @@ import { SubjectSelect } from '@/app/components/SubjectSelect';
 import { FinalExam } from '@/app/components/FinalExam';
 import { Results } from '@/app/components/Results';
 import { Assessment } from '@/app/components/Assessment';
+import { StageTwoPreparation } from '@/app/components/StageTwoPreparation';
 import { AIChatbot } from '@/app/components/AIChatbot';
 import { SplashScreen } from '@/app/components/SplashScreen';
 import { Toaster } from '@/app/components/ui/sonner';
@@ -49,6 +50,8 @@ function AppContent() {
         return <FinalExam />;
       case 'results':
         return <Results />;
+      case 'stageTwoPreparation':
+        return <StageTwoPreparation />;
       default:
         return <Dashboard />;
     }

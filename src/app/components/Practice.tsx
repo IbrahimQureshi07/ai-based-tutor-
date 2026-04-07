@@ -126,7 +126,7 @@ export const Practice: React.FC = () => {
     toast.info('Loading similar question...');
     // In a real app, this would fetch a similar question based on topic
     setTimeout(() => {
-      const similarQuestions = getRandomQuestions(1, currentQuestion.difficulty);
+      const similarQuestions = getRandomQuestions(1, currentQuestion.difficulty ?? 'medium');
       if (similarQuestions.length > 0) {
         questions[currentIndex] = similarQuestions[0];
         setQuestions([...questions]);
@@ -206,13 +206,13 @@ export const Practice: React.FC = () => {
                 {currentQuestion.topic}
               </span>
               <span className={`ml-2 px-3 py-1 rounded-full text-sm font-semibold ${
-                currentQuestion.difficulty === 'easy'
+                (currentQuestion.difficulty ?? 'medium') === 'easy'
                   ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : currentQuestion.difficulty === 'medium'
+                  : (currentQuestion.difficulty ?? 'medium') === 'medium'
                   ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
                   : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
               }`}>
-                {currentQuestion.difficulty}
+                {currentQuestion.difficulty ?? 'medium'}
               </span>
             </div>
             <Button

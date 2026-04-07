@@ -19,7 +19,8 @@
 export interface Question {
   id: string;
   subject: string;
-  difficulty: 'easy' | 'medium' | 'hard';
+  /** Set when present on the bank row; omit when unknown (avoid fake "medium" for GPT fallback). */
+  difficulty?: 'easy' | 'medium' | 'hard';
   question: string;
   options: string[];
   correctAnswer: number;

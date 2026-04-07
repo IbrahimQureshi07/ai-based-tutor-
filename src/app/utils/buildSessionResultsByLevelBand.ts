@@ -3,6 +3,7 @@ import {
   type LevelBandSlug,
   fallbackBandFromLegacyDifficulty,
   isEphemeralQuestionId,
+  normalizeLevelBandSlug,
 } from '@/app/constants/levelBands';
 import { fetchLevelsByQuestionIds, getOrClassifyLevelBand } from '@/app/services/questionLevels';
 
@@ -14,7 +15,7 @@ export type SessionAggregate = {
 };
 
 /**
- * Build Results charts using six level bands (DB cache + legacy fallback; ephemeral → classify).
+ * Build Results charts using three level bands (DB cache + legacy fallback; ephemeral → classify).
  */
 export async function aggregateResultsByLevelBand(
   questionsList: Question[],
@@ -41,7 +42,9 @@ export async function aggregateResultsByLevelBand(
     if (isEphemeralQuestionId(question.id)) {
       band = await getOrClassifyLevelBand(question);
     } else {
-      band = levelMap.get(question.id) ?? fallbackBandFromLegacyDifficulty(question.difficulty);
+      band = normalizeLevelBandSlug(
+        levelMap.get(question.id) ?? fallbackBandFromLegacyDifficulty(question.difficulty)
+      );
     }
 
     if (!byDifficulty[band]) byDifficulty[band] = { correct: 0, total: 0 };

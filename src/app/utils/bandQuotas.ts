@@ -36,8 +36,7 @@ export function allocateWeightedQuotas(
 }
 
 /**
- * Spread `total` picks across six bands as evenly as possible (e.g. 5 → 1 each for five bands, 0 for one;
- * 25 → four bands at 4 and two at 5, etc.).
+ * Spread `total` picks across three bands as evenly as possible (e.g. 10 → 3,3,4).
  */
 export function allocateBandQuotas(total: number): Map<LevelBandSlug, number> {
   const map = new Map<LevelBandSlug, number>();

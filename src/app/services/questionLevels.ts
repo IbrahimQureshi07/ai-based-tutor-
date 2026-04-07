@@ -7,7 +7,7 @@ import type { Question } from '@/app/data/exam-data';
 import {
   type LevelBandSlug,
   normalizeLevelBandSlug,
-  fallbackBandFromLegacyDifficulty,
+  legacyBandIfExplicitEasyOrHard,
   isEphemeralQuestionId,
 } from '@/app/constants/levelBands';
 import { classifyQuestionLevelBand } from '@/app/services/aiService';
@@ -120,11 +120,13 @@ export async function getOrClassifyLevelBand(q: Question): Promise<LevelBandSlug
     const hit = ephemeralBandCache.get(q.id);
     if (hit) return hit;
     try {
-      const band = await classifyQuestionLevelBand(q.question, q.options, ctx);
+      const band = await classifyQuestionLevelBand(q.question, q.options, ctx, {
+        legacyDifficulty: q.difficulty,
+      });
       ephemeralBandCache.set(q.id, band);
       return band;
     } catch {
-      const fb = fallbackBandFromLegacyDifficulty(q.difficulty);
+      const fb = legacyBandIfExplicitEasyOrHard(q.difficulty) ?? 'medium';
       ephemeralBandCache.set(q.id, fb);
       return fb;
     }
@@ -141,12 +143,14 @@ export async function getOrClassifyLevelBand(q: Question): Promise<LevelBandSlug
   }
 
   try {
-    const band = await classifyQuestionLevelBand(q.question, q.options, ctx);
+    const band = await classifyQuestionLevelBand(q.question, q.options, ctx, {
+      legacyDifficulty: q.difficulty,
+    });
     await persistDbLevel(q.id, band);
     writeLocal(q.id, band);
     return band;
   } catch {
-    const fb = fallbackBandFromLegacyDifficulty(q.difficulty);
+    const fb = legacyBandIfExplicitEasyOrHard(q.difficulty) ?? 'medium';
     await persistDbLevel(q.id, fb);
     writeLocal(q.id, fb);
     return fb;

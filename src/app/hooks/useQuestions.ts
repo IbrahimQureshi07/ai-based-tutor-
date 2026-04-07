@@ -13,6 +13,8 @@ interface SupabaseQuestionRow {
   'Correct Answer': string;
   'Feedback / Explanation': string | null;
   subject?: string | null;
+  /** Optional column — add via Backend/sql/add_questions_difficulty_column.sql if missing. */
+  difficulty?: string | null;
 }
 
 function parseCorrectAnswerIndex(val: string | null | undefined): number {
@@ -31,9 +33,19 @@ function isCompleteRow(row: SupabaseQuestionRow): boolean {
   );
 }
 
+function parseDifficultyFromBank(raw: string | null | undefined): 'easy' | 'medium' | 'hard' | undefined {
+  if (raw == null || typeof raw !== 'string') return undefined;
+  const t = raw.trim().toLowerCase();
+  if (t === 'easy' || t === 'e') return 'easy';
+  if (t === 'hard' || t === 'h') return 'hard';
+  if (t === 'medium' || t === 'med' || t === 'm') return 'medium';
+  return undefined;
+}
+
 function mapRowToQuestion(row: SupabaseQuestionRow): Question {
   const sub = (row.subject && String(row.subject).trim()) || 'General';
-  return {
+  const bankDifficulty = parseDifficultyFromBank(row.difficulty ?? undefined);
+  const q: Question = {
     id: row.id,
     question: row.Question,
     options: [row.A, row.B, row.C, row.D],
@@ -42,8 +54,9 @@ function mapRowToQuestion(row: SupabaseQuestionRow): Question {
     whyWrong: {},
     subject: sub,
     category: sub,
-    difficulty: 'medium',
   };
+  if (bankDifficulty !== undefined) q.difficulty = bankDifficulty;
+  return q;
 }
 
 export function useQuestions() {
@@ -63,6 +76,7 @@ export function useQuestions() {
         const pageSize = 1000;
         const rows: SupabaseQuestionRow[] = [];
         let from = 0;
+        // After `add_questions_difficulty_column.sql`, add `difficulty` to this select to map legacy easy/hard from the bank.
         for (;;) {
           const { data, error: fetchError } = await supabase
             .from('questions')

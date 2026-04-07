@@ -20,7 +20,8 @@ import {
   Sun,
   LogOut,
   Zap,
-  Focus
+  Focus,
+  Layers,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/app/components/ui/tooltip';
 import { aiSuggestions } from '@/app/data/exam-data';
@@ -28,6 +29,8 @@ import { useState, useEffect } from 'react';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { backfillMissingQuestionLevels } from '@/app/services/questionLevels';
 import { isAdminEmail } from '@/app/utils/adminEmails';
+import { getCurrentUserId } from '@/app/services/userWrongQuestions';
+import { userHasCompletedStageOne } from '@/app/services/practiceStageTwoAggregation';
 
 export function Dashboard() {
   const {
@@ -51,6 +54,7 @@ export function Dashboard() {
   const [backfillBusy, setBackfillBusy] = useState(false);
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const [showLevelBackfillAdmin, setShowLevelBackfillAdmin] = useState(false);
+  const [stageTwoUnlocked, setStageTwoUnlocked] = useState(false);
 
   const mockTestUnlocked = userProgress.examReadiness >= 80;
   const finalExamUnlocked = userProgress.mockTestsCompleted >= 1 && userProgress.examReadiness >= 90;
@@ -65,6 +69,17 @@ export function Dashboard() {
       setShowLevelBackfillAdmin(isAdminEmail(session?.user?.email));
     });
     return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const uid = await getCurrentUserId();
+      if (!uid) {
+        setStageTwoUnlocked(false);
+        return;
+      }
+      setStageTwoUnlocked(await userHasCompletedStageOne(uid));
+    })();
   }, []);
 
   // Check for unlock animations
@@ -407,6 +422,58 @@ export function Dashboard() {
                 </TooltipTrigger>
                 {userProgress.completedAssessment && (
                   <TooltipContent>Assessment completed ✓</TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          </motion.div>
+
+          {/* Stage 2 — Preparation (gated on Stage 1) */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.45 }}
+          >
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Card
+                    className={`p-6 transition-all ${
+                      stageTwoUnlocked
+                        ? 'cursor-pointer hover:shadow-xl bg-card hover:border-teal-500/50 border-teal-500/20'
+                        : 'cursor-not-allowed opacity-70 bg-muted/30 border-muted'
+                    }`}
+                    onClick={() => {
+                      if (!stageTwoUnlocked) return;
+                      setCurrentScreen('stageTwoPreparation');
+                    }}
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="w-12 h-12 rounded-xl bg-teal-500/10 flex items-center justify-center">
+                          <Layers className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+                        </div>
+                        {stageTwoUnlocked ? (
+                          <Unlock className="w-6 h-6 text-teal-600 dark:text-teal-400" />
+                        ) : (
+                          <Lock className="w-6 h-6 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold mb-1">Stage 2 · Preparation</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {stageTwoUnlocked
+                            ? 'Up to 110 Q · weighted from your latest Stage 1 results'
+                            : 'Complete any Stage 1 topic first to unlock'}
+                        </p>
+                      </div>
+                      <Button className="w-full" variant="outline" disabled={!stageTwoUnlocked}>
+                        {stageTwoUnlocked ? 'Start Stage 2' : 'Locked'}
+                      </Button>
+                    </div>
+                  </Card>
+                </TooltipTrigger>
+                {!stageTwoUnlocked && (
+                  <TooltipContent>Complete at least one Stage 1 topic assessment first</TooltipContent>
                 )}
               </Tooltip>
             </TooltipProvider>
