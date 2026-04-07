@@ -3,14 +3,19 @@ import type { AssessmentOutcomeKind } from '@/app/utils/assessmentScoring';
 import type { AssessmentTier } from '@/app/utils/assessmentTier';
 import type { StatusBand } from '@/app/utils/assessmentScoring';
 
-export async function createTopicAttempt(userId: string, topicCode: string): Promise<string | null> {
+export async function createTopicAttempt(
+  userId: string,
+  topicCode: string,
+  options?: { totalQuestions?: number }
+): Promise<string | null> {
+  const totalQuestions = options?.totalQuestions ?? 35;
   const { data, error } = await supabase
     .from('assessment_topic_attempts')
     .insert({
       user_id: userId,
       topic_code: topicCode,
       status: 'in_progress',
-      total_questions: 35,
+      total_questions: totalQuestions,
       correct_first_try: 0,
       medium_wrong: 0,
       hard_wrong: 0,

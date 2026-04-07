@@ -8,6 +8,8 @@ import { Progress } from '@/app/components/ui/progress';
 import type { Question } from '@/app/data/exam-data';
 import { SUBJECTS } from '@/app/data/subjects';
 import { getCurrentUserId } from '@/app/services/userWrongQuestions';
+import { supabase } from '@/app/services/supabase';
+import { isAdminEmail } from '@/app/utils/adminEmails';
 import {
   createTopicAttempt,
   insertQuestionOutcome,
@@ -16,7 +18,7 @@ import {
 import { buildStageOneAssessmentQueue, STAGE_ONE_TOPIC_TOTAL } from '@/app/utils/buildStageOneAssessmentQueue';
 import type { AssessmentTier } from '@/app/utils/assessmentTier';
 import {
-  computeRawScorePercent,
+  computeRawScorePercentForTotal,
   computeAdjustedScore,
   statusBandFromAdjusted,
   buildAssessmentNarrative,
@@ -29,6 +31,9 @@ import { ArrowLeft, Lightbulb, ChevronRight, SkipForward } from 'lucide-react';
 function isSimilarId(id: string): boolean {
   return id.startsWith('similar-');
 }
+
+/** Admins get a short Stage 1 run per topic for QA; learners still need full bank and get 35 Q. */
+const STAGE_ONE_ADMIN_QUESTION_CAP = 10;
 
 export function StageOneAssessment({ topicKey }: { topicKey: string }) {
   const {
@@ -49,6 +54,8 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [attemptId, setAttemptId] = useState<string | null>(null);
+  const [adminStageOneCapApplied, setAdminStageOneCapApplied] = useState(false);
+  const sessionTotalRef = useRef(STAGE_ONE_TOPIC_TOTAL);
 
   const [similarQ, setSimilarQ] = useState<Question | null>(null);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
@@ -82,17 +89,32 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
           setLoadingQueue(false);
           return;
         }
-        setBanks(b);
-        setTiers(t);
+
+        const { data: sessionWrap } = await supabase.auth.getSession();
+        const sessionEmail = sessionWrap?.session?.user?.email;
+        const adminShortRun =
+          isAdminEmail(sessionEmail) && b.length > STAGE_ONE_ADMIN_QUESTION_CAP;
+
+        const finalBanks = adminShortRun ? b.slice(0, STAGE_ONE_ADMIN_QUESTION_CAP) : b;
+        const finalTiers = adminShortRun ? t.slice(0, STAGE_ONE_ADMIN_QUESTION_CAP) : t;
+        const effectiveTotal = finalBanks.length;
+        sessionTotalRef.current = effectiveTotal;
+
+        if (!cancelled) setAdminStageOneCapApplied(adminShortRun);
+
+        setBanks(finalBanks);
+        setTiers(finalTiers);
         const tb = emptyTierBreakdown();
-        for (const tier of t) {
+        for (const tier of finalTiers) {
           tb[tier].total += 1;
         }
         tierStatRef.current = tb;
 
         const userId = await getCurrentUserId();
         if (userId) {
-          const id = await createTopicAttempt(userId, topicKey);
+          const id = await createTopicAttempt(userId, topicKey, {
+            totalQuestions: effectiveTotal,
+          });
           if (!cancelled) setAttemptId(id);
         }
       } catch (e) {
@@ -164,7 +186,8 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
 
   const finishTest = useCallback(async () => {
     const { cf, mw, hw, sk } = statsRef.current;
-    const raw = computeRawScorePercent(cf);
+    const T = sessionTotalRef.current;
+    const raw = computeRawScorePercentForTotal(cf, T);
     const adj = computeAdjustedScore(raw, mw);
     const band = statusBandFromAdjusted(adj);
     const ts = tierStatRef.current;
@@ -183,7 +206,7 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
     }
 
     setLastSessionResults({
-      total: STAGE_ONE_TOPIC_TOTAL,
+      total: T,
       correct: cf,
       incorrect: mw + hw + sk,
       byDifficulty: {
@@ -195,7 +218,7 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
       stageOneAssessment: {
         topicCode: topicKey,
         topicLabel,
-        totalQuestions: STAGE_ONE_TOPIC_TOTAL,
+        totalQuestions: T,
         correctFirstTry: cf,
         mediumWrong: mw,
         hardWrong: hw,
@@ -385,7 +408,7 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-muted-foreground">Building Stage 1 assessment (35 questions)…</p>
+          <p className="text-muted-foreground">Building Stage 1 assessment (up to {STAGE_ONE_TOPIC_TOTAL} questions)…</p>
         </div>
       </div>
     );
@@ -404,7 +427,8 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
     return null;
   }
 
-  const progressPct = ((currentIndex + 1) / STAGE_ONE_TOPIC_TOTAL) * 100;
+  const totalSlots = banks.length;
+  const progressPct = totalSlots > 0 ? ((currentIndex + 1) / totalSlots) * 100 : 0;
   const showSkip = similarQ !== null && isSimilarId(similarQ.id) && !similarShowReveal;
 
   return (
@@ -417,10 +441,15 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
               Topics
             </Button>
             <span className="text-sm font-medium">
-              {currentIndex + 1} / {STAGE_ONE_TOPIC_TOTAL}
+              {currentIndex + 1} / {totalSlots}
             </span>
           </div>
-          <p className="text-xs text-muted-foreground mb-2 truncate">{topicLabel}</p>
+          <p className="text-xs text-muted-foreground mb-2 truncate">
+            {topicLabel}
+            {adminStageOneCapApplied
+              ? ` · Admin preview: ${STAGE_ONE_ADMIN_QUESTION_CAP} questions only (learners get ${STAGE_ONE_TOPIC_TOTAL})`
+              : ''}
+          </p>
           <Progress value={progressPct} className="h-2" />
         </div>
       </header>

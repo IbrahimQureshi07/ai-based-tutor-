@@ -287,7 +287,9 @@ export function Results() {
                 <div className="rounded-xl bg-muted/50 p-3">
                   <p className="text-xs text-muted-foreground">Raw score</p>
                   <p className="text-2xl font-bold">{lastSessionResults.stageOneAssessment.rawScore}%</p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">First-try correct ÷ 35</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    First-try correct ÷ {lastSessionResults.stageOneAssessment.totalQuestions}
+                  </p>
                 </div>
                 <div className="rounded-xl bg-muted/50 p-3">
                   <p className="text-xs text-muted-foreground">Adjusted score</p>

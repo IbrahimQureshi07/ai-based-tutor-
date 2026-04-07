@@ -8,6 +8,8 @@ import { Progress } from '@/app/components/ui/progress';
 import type { Question } from '@/app/data/exam-data';
 import { SUBJECTS } from '@/app/data/subjects';
 import { getCurrentUserId } from '@/app/services/userWrongQuestions';
+import { supabase } from '@/app/services/supabase';
+import { isAdminEmail } from '@/app/utils/adminEmails';
 import {
   createMistakesTestAttempt,
   insertMistakesTestOutcome,
@@ -34,6 +36,9 @@ import {
   type AssessmentOutcomeKind,
 } from '@/app/utils/assessmentScoring';
 import { MISTAKES_TEST_TOTAL } from '@/app/utils/mistakesTestConstants';
+
+/** Admins get a short run for QA; learners unchanged. */
+const MISTAKES_TEST_ADMIN_QUESTION_CAP = 10;
 import { buildMistakesTestCombinedAnalytics } from '@/app/utils/buildMistakesTestCombinedAnalytics';
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
 import { generateHint, generateSimilarQuestion } from '@/app/services/aiService';
@@ -72,6 +77,7 @@ export function MistakesTest() {
   const [queueError, setQueueError] = useState<string | null>(null);
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [shortfallNotice, setShortfallNotice] = useState<number | null>(null);
+  const [adminMistakesCapApplied, setAdminMistakesCapApplied] = useState(false);
 
   const [similarQ, setSimilarQ] = useState<Question | null>(null);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
@@ -146,27 +152,52 @@ export function MistakesTest() {
           return;
         }
 
+        const { data: sessionWrap } = await supabase.auth.getSession();
+        const sessionEmail = sessionWrap?.session?.user?.email;
+        const adminShortRun =
+          isAdminEmail(sessionEmail) &&
+          queueResult.questions.length > MISTAKES_TEST_ADMIN_QUESTION_CAP;
+
+        const finalQuestions = adminShortRun
+          ? queueResult.questions.slice(0, MISTAKES_TEST_ADMIN_QUESTION_CAP)
+          : queueResult.questions;
+        const finalTiers = adminShortRun
+          ? queueResult.tiers.slice(0, MISTAKES_TEST_ADMIN_QUESTION_CAP)
+          : queueResult.tiers;
+        const finalSources = adminShortRun
+          ? queueResult.sources.slice(0, MISTAKES_TEST_ADMIN_QUESTION_CAP)
+          : queueResult.sources;
+
+        if (queueResult.shortfall > 0 && !adminShortRun) {
+          setShortfallNotice(queueResult.shortfall);
+        } else {
+          setShortfallNotice(null);
+        }
+
         statsRef.current = { cf: 0, mw: 0, hw: 0, sk: 0 };
         perTopicRef.current = {};
         unresolvedHardIdsRef.current = [];
-        sourcesRef.current = queueResult.sources;
+        sourcesRef.current = finalSources;
         userIdRef.current = userId;
 
-        setBanks(queueResult.questions);
-        setTiers(queueResult.tiers);
+        if (!cancelled) setAdminMistakesCapApplied(adminShortRun);
+
+        setBanks(finalQuestions);
+        setTiers(finalTiers);
         const tb = emptyTierBreakdown();
-        for (const tier of queueResult.tiers) {
+        for (const tier of finalTiers) {
           tb[tier].total += 1;
         }
         tierStatRef.current = tb;
 
-        if (queueResult.shortfall > 0) {
-          setShortfallNotice(queueResult.shortfall);
-        }
+        const buildSnapshot = {
+          ...queueResult.buildSnapshot,
+          ...(adminShortRun ? { adminQuestionCap: MISTAKES_TEST_ADMIN_QUESTION_CAP } : {}),
+        };
 
         const aid = await createMistakesTestAttempt(userId, {
-          totalQuestions: queueResult.questions.length,
-          buildSnapshot: queueResult.buildSnapshot,
+          totalQuestions: finalQuestions.length,
+          buildSnapshot,
         });
         if (!cancelled) setAttemptId(aid);
       } catch (e) {
@@ -553,6 +584,9 @@ export function MistakesTest() {
             Past mistakes + weighted fresh · mixed topics
             {shortfallNotice != null && shortfallNotice > 0
               ? ` · ${shortfallNotice} slot(s) short of ${MISTAKES_TEST_TOTAL} (bank limit)`
+              : ''}
+            {adminMistakesCapApplied
+              ? ` · Admin preview: first ${MISTAKES_TEST_ADMIN_QUESTION_CAP} questions only (full length unchanged for other users)`
               : ''}
           </p>
           <Progress value={progressPct} className="h-2" />
