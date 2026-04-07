@@ -21,7 +21,7 @@ function shuffleInPlace<T>(arr: T[]): T[] {
 }
 
 /** Scale Stage-1 style 12 / 13 / 10 mix to exactly `n` slots (largest remainder on tiers). */
-function tierCountsForN(n: number): Record<AssessmentTier, number> {
+export function tierCountsForN(n: number): Record<AssessmentTier, number> {
   if (n <= 0) return { easy: 0, medium: 0, hard: 0 };
   const exact = {
     easy: (n * 12) / 35,
@@ -49,7 +49,7 @@ function tierCountsForN(n: number): Record<AssessmentTier, number> {
 /**
  * Pick up to `need` questions from a single-topic pool, medium-heavy mix, skip `used` ids.
  */
-function pickFromTopicPool(
+export function pickFromTopicPool(
   pool: Question[],
   need: number,
   used: Set<string>,
@@ -121,7 +121,7 @@ function pickFromTopicPool(
 /**
  * Fill remaining slots from unused bank questions; prefer medium → hard → easy.
  */
-function fillShortfall(
+export function fillShortfall(
   allQuestions: Question[],
   need: number,
   used: Set<string>,

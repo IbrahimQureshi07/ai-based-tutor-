@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useApp, type StageTwoProgressAnalyticsPayload } from '@/app/context/ExamContext';
+import { useApp } from '@/app/context/ExamContext';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
@@ -8,18 +8,22 @@ import { Progress } from '@/app/components/ui/progress';
 import type { Question } from '@/app/data/exam-data';
 import { SUBJECTS } from '@/app/data/subjects';
 import { getCurrentUserId } from '@/app/services/userWrongQuestions';
-import { supabase } from '@/app/services/supabase';
-import { isAdminEmail } from '@/app/utils/adminEmails';
 import {
-  createPreparationAttempt,
-  insertPreparationOutcome,
-  completePreparationAttempt,
-} from '@/app/services/practiceStageTwo';
+  createMistakesTestAttempt,
+  insertMistakesTestOutcome,
+  completeMistakesTestAttempt,
+  insertMistakesTestTeacherAlert,
+} from '@/app/services/mistakesTest';
 import {
-  buildPracticePreparationAllocation,
+  fetchLatestStageOneRollupByTopic,
   userHasCompletedStageOne,
 } from '@/app/services/practiceStageTwoAggregation';
-import { buildPracticePreparationQueue } from '@/app/utils/buildPracticePreparationQueue';
+import {
+  fetchLatestCompletedPreparationSummary,
+  fetchPreparationPerTopicStats,
+} from '@/app/services/practiceStageTwo';
+import { userHasCompletedStageTwoPreparation } from '@/app/services/mistakesTestAggregation';
+import { buildMistakesTestQueue, type MistakesTestQueueSource } from '@/app/utils/buildMistakesTestQueue';
 import type { AssessmentTier } from '@/app/utils/assessmentTier';
 import {
   computeRawScorePercentForTotal,
@@ -29,14 +33,11 @@ import {
   emptyTierBreakdown,
   type AssessmentOutcomeKind,
 } from '@/app/utils/assessmentScoring';
-import { PRACTICE_PREPARATION_TOTAL } from '@/app/utils/practicePreparationQuotas';
+import { MISTAKES_TEST_TOTAL } from '@/app/utils/mistakesTestConstants';
+import { buildMistakesTestCombinedAnalytics } from '@/app/utils/buildMistakesTestCombinedAnalytics';
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
 import { generateHint, generateSimilarQuestion } from '@/app/services/aiService';
-import type { StageOneTopicRollupEntry } from '@/app/services/practiceStageTwoAggregation';
 import { ArrowLeft, Lightbulb, ChevronRight, SkipForward } from 'lucide-react';
-
-/** Admins (see `adminEmails` / VITE_ADMIN_EMAILS) get a short Stage 2 run for QA; learners unchanged. */
-const STAGE_TWO_ADMIN_QUESTION_CAP = 10;
 
 function isSimilarId(id: string): boolean {
   return id.startsWith('similar-');
@@ -47,15 +48,6 @@ function topicCodeFromBankQuestion(q: Question): string | null {
     if (subjectLabelMatches(q, s.key)) return s.key;
   }
   return null;
-}
-
-function countStageTwoSlotsByTopic(banks: Question[]): Record<string, number> {
-  const m: Record<string, number> = {};
-  for (const q of banks) {
-    const c = topicCodeFromBankQuestion(q) ?? '__unknown__';
-    m[c] = (m[c] ?? 0) + 1;
-  }
-  return m;
 }
 
 type PerTopicSt = { cf: number; mw: number; hw: number; sk: number };
@@ -69,109 +61,17 @@ function bumpPerTopic(ref: Record<string, PerTopicSt>, topicKey: string, kind: A
   if (kind === 'skipped') t.sk += 1;
 }
 
-function buildStageTwoProgressAnalytics(
-  rollup: Record<string, StageOneTopicRollupEntry> | null,
-  perTwo: Record<string, PerTopicSt>,
-  banks: Question[],
-  totals: { cf: number; sk: number; T: number }
-): StageTwoProgressAnalyticsPayload {
-  const slotCounts = countStageTwoSlotsByTopic(banks);
-
-  let stageOneTopicsAttempted = 0;
-  let sumCf1 = 0;
-  let sumT1 = 0;
-  let sumSk1 = 0;
-  let sumTopicPct = 0;
-
-  const topicsCompared: StageTwoProgressAnalyticsPayload['topicsCompared'] = [];
-
-  for (const s of SUBJECTS) {
-    const r = rollup?.[s.key];
-    const st = perTwo[s.key] ?? { cf: 0, mw: 0, hw: 0, sk: 0 };
-    const slots = slotCounts[s.key] ?? 0;
-
-    if (r?.hasAttempt) {
-      stageOneTopicsAttempted += 1;
-      sumCf1 += r.correctFirstTry;
-      sumT1 += r.totalQuestions;
-      sumSk1 += r.skipped;
-      const pct = r.totalQuestions > 0 ? (r.correctFirstTry / r.totalQuestions) * 100 : 0;
-      sumTopicPct += pct;
-    }
-
-    topicsCompared.push({
-      topicCode: s.key,
-      topicLabel: s.label,
-      stageOneHasAttempt: r?.hasAttempt ?? false,
-      stageOneCorrectFirstTry: r?.correctFirstTry ?? 0,
-      stageOneMediumWrong: r?.mediumWrong ?? 0,
-      stageOneHardWrong: r?.hardWrong ?? 0,
-      stageOneSkipped: r?.skipped ?? 0,
-      stageOneTotalQuestions: r?.totalQuestions ?? 35,
-      stageOneRawScore: r?.rawScore ?? 0,
-      stageTwoSlotCount: slots,
-      stageTwoCorrectFirstTry: st.cf,
-      stageTwoMediumWrong: st.mw,
-      stageTwoHardWrong: st.hw,
-      stageTwoSkipped: st.sk,
-    });
-  }
-
-  const unkSlots = slotCounts['__unknown__'] ?? 0;
-  const unkSt = perTwo['__unknown__'] ?? { cf: 0, mw: 0, hw: 0, sk: 0 };
-  if (unkSlots > 0 || unkSt.cf + unkSt.mw + unkSt.hw + unkSt.sk > 0) {
-    topicsCompared.push({
-      topicCode: '__unknown__',
-      topicLabel: 'Other / unmatched subject',
-      stageOneHasAttempt: false,
-      stageOneCorrectFirstTry: 0,
-      stageOneMediumWrong: 0,
-      stageOneHardWrong: 0,
-      stageOneSkipped: 0,
-      stageOneTotalQuestions: 0,
-      stageOneRawScore: 0,
-      stageTwoSlotCount: unkSlots,
-      stageTwoCorrectFirstTry: unkSt.cf,
-      stageTwoMediumWrong: unkSt.mw,
-      stageTwoHardWrong: unkSt.hw,
-      stageTwoSkipped: unkSt.sk,
-    });
-  }
-
-  const { cf, sk, T } = totals;
-
-  return {
-    topicsCompared,
-    summary: {
-      stageOneTopicsAttempted,
-      stageOneWeightedFirstTryPercent:
-        sumT1 > 0 ? Math.round((sumCf1 / sumT1) * 1000) / 10 : null,
-      stageOneAvgFirstTryPercent:
-        stageOneTopicsAttempted > 0
-          ? Math.round((sumTopicPct / stageOneTopicsAttempted) * 10) / 10
-          : null,
-      stageOneSkipsSum: sumSk1,
-      stageTwoTotalSlots: T,
-      stageTwoCorrectFirstTry: cf,
-      stageTwoFirstTryPercent: T > 0 ? Math.round((cf / T) * 1000) / 10 : 0,
-      stageTwoSkippedTotal: sk,
-    },
-  };
-}
-
-export function StageTwoPreparation() {
+export function MistakesTest() {
   const { setCurrentScreen, setLastSessionResults, setActiveTutorMcq } = useApp();
 
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
 
   const [banks, setBanks] = useState<Question[]>([]);
   const [tiers, setTiers] = useState<AssessmentTier[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [attemptId, setAttemptId] = useState<string | null>(null);
   const [shortfallNotice, setShortfallNotice] = useState<number | null>(null);
-  const [adminStageTwoCapApplied, setAdminStageTwoCapApplied] = useState(false);
 
   const [similarQ, setSimilarQ] = useState<Question | null>(null);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
@@ -183,12 +83,16 @@ export function StageTwoPreparation() {
   const [loadingHint, setLoadingHint] = useState(false);
   const [bankHint, setBankHint] = useState<{ text: string } | null>(null);
 
+  const [currentIndex, setCurrentIndex] = useState(0);
+
   const statsRef = useRef({ cf: 0, mw: 0, hw: 0, sk: 0 });
   const tierStatRef = useRef(emptyTierBreakdown());
   const totalSlotsRef = useRef(0);
   const banksRef = useRef<Question[]>([]);
-  const stageOneRollupRef = useRef<Record<string, StageOneTopicRollupEntry> | null>(null);
-  const perTopicStageTwoRef = useRef<Record<string, PerTopicSt>>({});
+  const perTopicRef = useRef<Record<string, PerTopicSt>>({});
+  const sourcesRef = useRef<MistakesTestQueueSource[]>([]);
+  const unresolvedHardIdsRef = useRef<string[]>([]);
+  const userIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     totalSlotsRef.current = banks.length;
@@ -213,80 +117,60 @@ export function StageTwoPreparation() {
       setLoadingQueue(true);
       setQueueError(null);
       setShortfallNotice(null);
-      setAdminStageTwoCapApplied(false);
       try {
         const userId = await getCurrentUserId();
         if (!userId) {
-          if (!cancelled) setQueueError('Sign in to run Stage 2 preparation.');
+          if (!cancelled) setQueueError('Sign in to run the mistakes test.');
           return;
         }
-        const unlocked = await userHasCompletedStageOne(userId);
-        if (!unlocked) {
+        if (!(await userHasCompletedStageOne(userId))) {
           if (!cancelled) {
-            setQueueError(
-              'Complete at least one Stage 1 topic assessment first. Stage 2 uses those results to weight your mix.'
-            );
+            setQueueError('Complete at least one Stage 1 topic assessment first.');
+          }
+          return;
+        }
+        if (!(await userHasCompletedStageTwoPreparation(userId))) {
+          if (!cancelled) {
+            setQueueError('Complete Stage 2 preparation at least once to unlock the mistakes test.');
           }
           return;
         }
 
-        const allocation = await buildPracticePreparationAllocation(userId);
-        const queueResult = await buildPracticePreparationQueue(questions, allocation);
+        const queueResult = await buildMistakesTestQueue(questions, userId);
         if (cancelled) return;
 
         if (queueResult.questions.length === 0) {
-          setQueueError('No questions available for Stage 2 preparation. Check your question bank.');
+          setQueueError(
+            'Could not build a mistakes test. Add more practice with mistakes in Stage 1 & 2, or check your question bank.'
+          );
           return;
         }
 
-        const { data: sessionWrap } = await supabase.auth.getSession();
-        const sessionEmail = sessionWrap?.session?.user?.email;
-        const adminShortRun =
-          isAdminEmail(sessionEmail) && queueResult.questions.length > STAGE_TWO_ADMIN_QUESTION_CAP;
-
-        const finalQuestions = adminShortRun
-          ? queueResult.questions.slice(0, STAGE_TWO_ADMIN_QUESTION_CAP)
-          : queueResult.questions;
-        const finalTiers = adminShortRun
-          ? queueResult.tiers.slice(0, STAGE_TWO_ADMIN_QUESTION_CAP)
-          : queueResult.tiers;
-
-        if (queueResult.shortfall > 0 && !adminShortRun) {
-          setShortfallNotice(queueResult.shortfall);
-        }
-
         statsRef.current = { cf: 0, mw: 0, hw: 0, sk: 0 };
-        perTopicStageTwoRef.current = {};
-        stageOneRollupRef.current = allocation.stageOneRollupByTopic;
+        perTopicRef.current = {};
+        unresolvedHardIdsRef.current = [];
+        sourcesRef.current = queueResult.sources;
+        userIdRef.current = userId;
 
-        if (!cancelled) setAdminStageTwoCapApplied(adminShortRun);
-
-        setBanks(finalQuestions);
-        setTiers(finalTiers);
+        setBanks(queueResult.questions);
+        setTiers(queueResult.tiers);
         const tb = emptyTierBreakdown();
-        for (const tier of finalTiers) {
+        for (const tier of queueResult.tiers) {
           tb[tier].total += 1;
         }
         tierStatRef.current = tb;
 
-        const weightSnapshot = {
-          ...allocation.weightSnapshot,
-          queueMeta: {
-            actualTotal: finalQuestions.length,
-            quotasUsed: queueResult.quotasUsed,
-            shortfall: queueResult.shortfall,
-            ...(adminShortRun ? { adminQuestionCap: STAGE_TWO_ADMIN_QUESTION_CAP } : {}),
-          },
-        };
+        if (queueResult.shortfall > 0) {
+          setShortfallNotice(queueResult.shortfall);
+        }
 
-        const prepId = await createPreparationAttempt(userId, {
-          totalQuestions: finalQuestions.length,
-          baselineSnapshot: allocation.baselineSnapshot as Record<string, unknown>,
-          weightSnapshot: weightSnapshot as unknown as Record<string, unknown>,
+        const aid = await createMistakesTestAttempt(userId, {
+          totalQuestions: queueResult.questions.length,
+          buildSnapshot: queueResult.buildSnapshot,
         });
-        if (!cancelled) setAttemptId(prepId);
+        if (!cancelled) setAttemptId(aid);
       } catch (e) {
-        if (!cancelled) setQueueError(e instanceof Error ? e.message : 'Failed to build Stage 2 queue');
+        if (!cancelled) setQueueError(e instanceof Error ? e.message : 'Failed to build mistakes test');
       } finally {
         if (!cancelled) setLoadingQueue(false);
       }
@@ -338,12 +222,18 @@ export function StageTwoPreparation() {
       if (kind === 'medium_wrong') secondTryCorrect = true;
       if (kind === 'hard_wrong') secondTryCorrect = false;
 
+      if (kind === 'hard_wrong') {
+        unresolvedHardIdsRef.current.push(bankSlot.id);
+      }
+
       const topicCode = topicCodeFromBankQuestion(bankSlot);
       const topicKey = topicCode ?? '__unknown__';
-      bumpPerTopic(perTopicStageTwoRef.current, topicKey, kind);
+      bumpPerTopic(perTopicRef.current, topicKey, kind);
+
+      const qSource: MistakesTestQueueSource | null = sourcesRef.current[currentIndex] ?? null;
 
       if (attemptId) {
-        await insertPreparationOutcome({
+        await insertMistakesTestOutcome({
           attemptId,
           questionId: bankSlot.id,
           topicCode,
@@ -352,6 +242,7 @@ export function StageTwoPreparation() {
           firstTryCorrect,
           usedHint,
           secondTryCorrect,
+          questionSource: qSource,
         });
       }
     },
@@ -366,8 +257,11 @@ export function StageTwoPreparation() {
     const band = statusBandFromAdjusted(adj);
     const ts = tierStatRef.current;
 
+    const unresolved = [...new Set(unresolvedHardIdsRef.current)];
+    let teacherAlertSent = false;
+
     if (attemptId) {
-      await completePreparationAttempt({
+      await completeMistakesTestAttempt({
         attemptId,
         correctFirstTry: cf,
         mediumWrong: mw,
@@ -376,15 +270,56 @@ export function StageTwoPreparation() {
         rawScore: raw,
         adjustedScore: adj,
         statusBand: band,
+        unresolvedSnapshot:
+          unresolved.length > 0
+            ? { unresolved_question_ids: unresolved, note: 'hard_wrong on bank slot in Stage 2.5 run' }
+            : null,
       });
+
+      if (unresolved.length > 0 && userIdRef.current) {
+        teacherAlertSent = await insertMistakesTestTeacherAlert({
+          userId: userIdRef.current,
+          attemptId,
+          payload: {
+            unresolved_question_ids: unresolved,
+            source: 'mistakes_test_stage_2_5',
+          },
+        });
+      }
     }
 
-    const stageTwoProgressAnalytics = buildStageTwoProgressAnalytics(
-      stageOneRollupRef.current,
-      perTopicStageTwoRef.current,
-      banksRef.current,
-      { cf, sk, T }
-    );
+    const uid = userIdRef.current;
+    let mistakesTestCombinedAnalytics = undefined;
+    if (uid) {
+      try {
+        const rollupMap = await fetchLatestStageOneRollupByTopic(uid);
+        const latestPrep = await fetchLatestCompletedPreparationSummary(uid);
+        const prepPerTopic = latestPrep
+          ? await fetchPreparationPerTopicStats(latestPrep.attemptId)
+          : {};
+        const perTopicCopy: Record<string, PerTopicSt> = {};
+        for (const [k, v] of Object.entries(perTopicRef.current)) {
+          perTopicCopy[k] = { ...v };
+        }
+        mistakesTestCombinedAnalytics = buildMistakesTestCombinedAnalytics(
+          rollupMap,
+          latestPrep,
+          prepPerTopic,
+          banksRef.current,
+          perTopicCopy,
+          {
+            totalQuestions: T,
+            correctFirstTry: cf,
+            mediumWrong: mw,
+            rawScore: raw,
+            adjustedScore: adj,
+            statusBand: band,
+          }
+        );
+      } catch (e) {
+        console.warn('[MistakesTest] combined analytics', e);
+      }
+    }
 
     setLastSessionResults({
       total: T,
@@ -396,9 +331,9 @@ export function StageTwoPreparation() {
         hard: { correct: ts.hard.correct, total: ts.hard.total },
       },
       byCategory: {},
-      stageTwoAssessment: {
-        topicCode: 'stage_two_preparation',
-        topicLabel: 'Cross-topic preparation (Stage 2)',
+      mistakesTestAssessment: {
+        topicCode: 'mistakes_test',
+        topicLabel: 'Mistakes test (Stage 2.5)',
         totalQuestions: T,
         correctFirstTry: cf,
         mediumWrong: mw,
@@ -414,8 +349,10 @@ export function StageTwoPreparation() {
         hardCorrect: ts.hard.correct,
         hardTotal: ts.hard.total,
         narrative: buildAssessmentNarrative(mw, hw),
+        unresolvedQuestionIds: unresolved,
+        teacherAlertSent,
       },
-      stageTwoProgressAnalytics,
+      mistakesTestCombinedAnalytics,
     });
 
     setCurrentScreen('results');
@@ -531,7 +468,7 @@ export function StageTwoPreparation() {
     if (!similarQ || !bankQ) return;
     statsRef.current.sk += 1;
     const tk = topicCodeFromBankQuestion(bankQ) ?? '__unknown__';
-    bumpPerTopic(perTopicStageTwoRef.current, tk, 'skipped');
+    bumpPerTopic(perTopicRef.current, tk, 'skipped');
     setSimilarQ(null);
     setSimilarShowReveal(false);
     setShowResult(false);
@@ -576,7 +513,7 @@ export function StageTwoPreparation() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-muted-foreground">Building Stage 2 preparation (up to {PRACTICE_PREPARATION_TOTAL} questions)…</p>
+          <p className="text-muted-foreground">Building Stage 2.5 mistakes test (up to {MISTAKES_TEST_TOTAL} questions)…</p>
         </div>
       </div>
     );
@@ -597,6 +534,7 @@ export function StageTwoPreparation() {
 
   const progressPct = totalSlots > 0 ? ((currentIndex + 1) / totalSlots) * 100 : 0;
   const showSkip = similarQ !== null && isSimilarId(similarQ.id) && !similarShowReveal;
+  const slotSource = sourcesRef.current[currentIndex];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5 flex flex-col">
@@ -612,12 +550,9 @@ export function StageTwoPreparation() {
             </span>
           </div>
           <p className="text-xs text-muted-foreground mb-2 truncate">
-            Weighted across topics from your latest Stage 1 results
+            Past mistakes + weighted fresh · mixed topics
             {shortfallNotice != null && shortfallNotice > 0
-              ? ` · ${shortfallNotice} slot(s) short of ${PRACTICE_PREPARATION_TOTAL} (bank limit)`
-              : ''}
-            {adminStageTwoCapApplied
-              ? ` · Admin preview: first ${STAGE_TWO_ADMIN_QUESTION_CAP} questions only (full length unchanged for other users)`
+              ? ` · ${shortfallNotice} slot(s) short of ${MISTAKES_TEST_TOTAL} (bank limit)`
               : ''}
           </p>
           <Progress value={progressPct} className="h-2" />
@@ -637,13 +572,18 @@ export function StageTwoPreparation() {
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex flex-wrap gap-2 mb-2">
-                    <span className="px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
-                      Stage 2 · Preparation
+                    <span className="px-3 py-1 rounded-full bg-rose-500/15 text-rose-800 dark:text-rose-300 text-xs font-semibold">
+                      Stage 2.5 · Mistakes test
                     </span>
                     {!similarQ && (
-                      <span className="px-3 py-1 rounded-full bg-muted text-xs font-medium capitalize">
-                        {tiers[currentIndex]} · Bank
-                      </span>
+                      <>
+                        <span className="px-3 py-1 rounded-full bg-muted text-xs font-medium capitalize">
+                          {tiers[currentIndex]} · Bank
+                        </span>
+                        <span className="px-3 py-1 rounded-full bg-slate-500/15 text-xs font-medium">
+                          {slotSource === 'mistake_bank' ? 'From past mistakes' : 'Fresh (weighted)'}
+                        </span>
+                      </>
                     )}
                     {similarQ && (
                       <span className="px-3 py-1 rounded-full bg-amber-500/15 text-amber-800 dark:text-amber-300 text-xs font-medium">
@@ -662,8 +602,8 @@ export function StageTwoPreparation() {
                     <p className="text-xs text-muted-foreground/90 mt-2 leading-relaxed">
                       A hint is shown below — read it, then select your answer again and press{' '}
                       <span className="font-medium text-foreground">Submit answer</span>. If you get it right after the
-                      hint, it counts as a medium wrong; if still wrong, you&apos;ll get a related practice question
-                      you can skip.
+                      hint, it counts as a medium wrong; if still wrong, you&apos;ll get a related practice question you
+                      can skip.
                     </p>
                   )}
 

@@ -20,6 +20,8 @@ import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarA
 import { useEffect, useState } from 'react';
 import { SUBJECTS, type SubjectMeta } from '@/app/data/subjects';
 import { StageTwoProgressAnalyticsSection } from '@/app/components/StageTwoProgressAnalyticsSection';
+import { ThreeStageCombinedAnalyticsSection } from '@/app/components/ThreeStageCombinedAnalyticsSection';
+import { JourneyAiReportSection } from '@/app/components/JourneyAiReportSection';
 import { LEVEL_SLUGS, LEVEL_BAND_LABELS, type LevelBandSlug } from '@/app/constants/levelBands';
 
 function TopicPracticeCard({
@@ -247,6 +249,12 @@ export function Results() {
       </div>
 
       <div className="container mx-auto px-4 py-8 space-y-6">
+        {lastSessionResults?.mistakesTestCombinedAnalytics && (
+          <ThreeStageCombinedAnalyticsSection data={lastSessionResults.mistakesTestCombinedAnalytics} />
+        )}
+
+        <JourneyAiReportSection />
+
         {lastSessionResults?.stageOneAssessment && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -433,6 +441,100 @@ export function Results() {
 
         {lastSessionResults?.stageTwoProgressAnalytics && (
           <StageTwoProgressAnalyticsSection data={lastSessionResults.stageTwoProgressAnalytics} />
+        )}
+
+        {lastSessionResults?.mistakesTestAssessment && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.08 }}
+          >
+            <Card className="p-6 md:p-8 border-rose-500/30 bg-gradient-to-br from-rose-500/[0.07] to-background">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400">
+                    Stage 2.5 · Mistakes test
+                  </p>
+                  <h2 className="text-xl font-bold mt-1">{lastSessionResults.mistakesTestAssessment.topicLabel}</h2>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-prose">
+                    {lastSessionResults.mistakesTestAssessment.narrative}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <p className="text-lg font-bold">
+                    {lastSessionResults.mistakesTestAssessment.statusBand === 'STRONG' && '✅ STRONG'}
+                    {lastSessionResults.mistakesTestAssessment.statusBand === 'AVERAGE' && '⚠️ AVERAGE'}
+                    {lastSessionResults.mistakesTestAssessment.statusBand === 'WEAK' && '❌ WEAK'}
+                    {lastSessionResults.mistakesTestAssessment.statusBand === 'CRITICAL' && '🚨 CRITICAL'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Raw score</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.mistakesTestAssessment.rawScore}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    First-try ÷ {lastSessionResults.mistakesTestAssessment.totalQuestions}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Adjusted</p>
+                  <p className="text-2xl font-bold text-primary">
+                    {lastSessionResults.mistakesTestAssessment.adjustedScore}%
+                  </p>
+                </div>
+                <div className="rounded-xl bg-amber-500/10 p-3 border border-amber-500/20">
+                  <p className="text-xs text-amber-800 dark:text-amber-200">Medium wrong</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.mistakesTestAssessment.mediumWrong}</p>
+                </div>
+                <div className="rounded-xl bg-rose-500/10 p-3 border border-rose-500/20">
+                  <p className="text-xs text-rose-800 dark:text-rose-200">Hard wrong</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.mistakesTestAssessment.hardWrong}</p>
+                </div>
+              </div>
+
+              {(lastSessionResults.mistakesTestAssessment.unresolvedQuestionIds.length > 0 ||
+                lastSessionResults.mistakesTestAssessment.teacherAlertSent) && (
+                <div className="mb-6 rounded-xl border border-rose-500/30 bg-rose-500/5 p-4 text-sm">
+                  <p className="font-semibold text-rose-800 dark:text-rose-200 mb-1">Unresolved / teacher handoff</p>
+                  <p className="text-muted-foreground">
+                    {lastSessionResults.mistakesTestAssessment.unresolvedQuestionIds.length > 0
+                      ? `${lastSessionResults.mistakesTestAssessment.unresolvedQuestionIds.length} bank item(s) still marked hard wrong (needs follow-up).`
+                      : 'No unresolved hard-wrong bank items this run.'}
+                  </p>
+                  {lastSessionResults.mistakesTestAssessment.teacherAlertSent && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Staff see this in the teacher interventions queue (<code className="text-[10px] bg-muted px-1 rounded">intervention_flags</code>
+                      ) after the SQL migration is applied.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-3 gap-2 text-center text-sm border-t border-border pt-6">
+                <div className="rounded-lg bg-emerald-500/10 py-2">
+                  <div className="font-semibold">
+                    {lastSessionResults.mistakesTestAssessment.easyCorrect}/{lastSessionResults.mistakesTestAssessment.easyTotal}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">Easy</div>
+                </div>
+                <div className="rounded-lg bg-amber-500/10 py-2">
+                  <div className="font-semibold">
+                    {lastSessionResults.mistakesTestAssessment.mediumCorrect}/{lastSessionResults.mistakesTestAssessment.mediumTotal}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">Medium</div>
+                </div>
+                <div className="rounded-lg bg-rose-500/10 py-2">
+                  <div className="font-semibold">
+                    {lastSessionResults.mistakesTestAssessment.hardCorrect}/{lastSessionResults.mistakesTestAssessment.hardTotal}
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">Hard</div>
+                </div>
+              </div>
+            </Card>
+          </motion.div>
         )}
 
         {/* Performance Overview */}

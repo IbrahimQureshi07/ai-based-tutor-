@@ -9,6 +9,7 @@
  */
 
 import type { TutorActiveMcq } from '@/app/utils/tutorOfficialContext';
+import type { JourneyReportSnapshot } from '@/app/utils/buildJourneyReportSnapshot';
 import {
   LEVEL_SLUGS,
   legacyBandIfExplicitEasyOrHard,
@@ -590,6 +591,113 @@ ${optsLines}`;
 
   if (explicitLegacy !== undefined) return explicitLegacy;
   return 'medium';
+}
+
+/** Parsed AI output for Stages 1 + 2 + 2.5 journey report (Results). */
+export type CombinedJourneyAiReport = {
+  headline: string;
+  narrative: string;
+  trajectory: 'improving' | 'stable' | 'needs_attention';
+  mock_readiness: {
+    verdict: 'ready' | 'almost' | 'not_yet';
+    rationale: string;
+  };
+  subject_insights: Array<{
+    topic_code: string;
+    label: string;
+    strength: 'strong' | 'average' | 'weak';
+    tip: string;
+  }>;
+  priorities: string[];
+  next_steps: string[];
+};
+
+function parseCombinedJourneyReportJson(raw: string): CombinedJourneyAiReport | null {
+  try {
+    const j = JSON.parse(raw) as Record<string, unknown>;
+    const headline = typeof j.headline === 'string' ? j.headline : 'Your learning journey';
+    const narrative = typeof j.narrative === 'string' ? j.narrative : '';
+    const tr = j.trajectory;
+    const trajectory =
+      tr === 'improving' || tr === 'stable' || tr === 'needs_attention' ? tr : 'stable';
+    const mr = j.mock_readiness as Record<string, unknown> | undefined;
+    const v = mr?.verdict;
+    const verdict =
+      v === 'ready' || v === 'almost' || v === 'not_yet' ? v : 'not_yet';
+    const rationale = typeof mr?.rationale === 'string' ? mr.rationale : '';
+    const si = Array.isArray(j.subject_insights) ? j.subject_insights : [];
+    const subject_insights = si
+      .filter((x): x is Record<string, unknown> => x && typeof x === 'object')
+      .map((x) => ({
+        topic_code: String(x.topic_code ?? ''),
+        label: String(x.label ?? ''),
+        strength:
+          x.strength === 'strong' || x.strength === 'average' || x.strength === 'weak'
+            ? x.strength
+            : 'average',
+        tip: String(x.tip ?? ''),
+      }));
+    const priorities = Array.isArray(j.priorities)
+      ? j.priorities.filter((p): p is string => typeof p === 'string')
+      : [];
+    const next_steps = Array.isArray(j.next_steps)
+      ? j.next_steps.filter((p): p is string => typeof p === 'string')
+      : [];
+    return {
+      headline,
+      narrative,
+      trajectory,
+      mock_readiness: { verdict, rationale },
+      subject_insights,
+      priorities,
+      next_steps,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One-shot coach report: Stage 1–2–2.5 snapshot + unresolved IDs → structured JSON + narrative.
+ */
+export async function generateCombinedJourneyReport(
+  snapshot: JourneyReportSnapshot
+): Promise<CombinedJourneyAiReport> {
+  const payload = JSON.stringify(snapshot, null, 0);
+  const system = `You are a concise exam-prep coach for real estate licensing (Stages: 1 = per-topic assessment, 2 = cross-topic prep, 2.5 = mistakes test).
+Return ONLY a JSON object with these exact keys (no markdown):
+- headline: string, one punchy line
+- narrative: string, 2–4 short paragraphs on progress from Stage 1 through latest data, tone supportive
+- trajectory: one of "improving" | "stable" | "needs_attention"
+- mock_readiness: object with verdict "ready" | "almost" | "not_yet" and rationale (string). Use app.examReadiness (80+ unlocks mock in this app), stage performance, and unresolved hard-wrongs.
+- subject_insights: array of { topic_code, label, strength ("strong"|"average"|"weak"), tip } for topics that have stage1 data OR appeared in latest stage2; skip empty topics if needed, cap 12 items
+- priorities: string array, max 4 study priorities
+- next_steps: string array, max 5 concrete actions`;
+
+  const user = `Student journey snapshot (JSON):\n${payload.slice(0, 28000)}`;
+
+  const messages: ChatMessage[] = [
+    { role: 'system', content: system },
+    { role: 'user', content: user },
+  ];
+
+  const raw = await callOpenAI(messages, 0.45, 1800, { jsonObject: true });
+  const parsed = parseCombinedJourneyReportJson(raw);
+  if (parsed) return parsed;
+
+  return {
+    headline: 'Coach report (parse fallback)',
+    narrative:
+      'We could not parse the model output. Check the browser console. Your snapshot data is still available below.',
+    trajectory: 'stable',
+    mock_readiness: {
+      verdict: snapshot.app.mockUnlockedByReadiness ? 'almost' : 'not_yet',
+      rationale: 'Based on app readiness only — full AI narrative unavailable.',
+    },
+    subject_insights: [],
+    priorities: ['Re-run Generate after checking API key and network.'],
+    next_steps: ['Open AI chat for follow-up questions.'],
+  };
 }
 
 /**

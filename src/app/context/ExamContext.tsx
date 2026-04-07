@@ -3,6 +3,7 @@ import { UserProgress, initialUserProgress, Question } from '@/app/data/exam-dat
 import { supabase } from '@/app/services/supabase';
 import { loadPracticeState, loadAssessmentState } from '@/app/services/practiceStateStorage';
 import type { TutorActiveMcq } from '@/app/utils/tutorOfficialContext';
+import type { MistakesTestCombinedAnalyticsPayload } from '@/app/utils/buildMistakesTestCombinedAnalytics';
 
 interface AppContextType {
   userProgress: UserProgress;
@@ -115,6 +116,33 @@ interface AppContextType {
         stageTwoSkippedTotal: number;
       };
     };
+    /** Stage 2.5 — Mistakes test (past mistakes + weighted fresh) */
+    mistakesTestAssessment?: {
+      topicCode: string;
+      topicLabel: string;
+      totalQuestions: number;
+      correctFirstTry: number;
+      mediumWrong: number;
+      hardWrong: number;
+      skipped: number;
+      rawScore: number;
+      adjustedScore: number;
+      statusBand: 'STRONG' | 'AVERAGE' | 'WEAK' | 'CRITICAL';
+      easyCorrect: number;
+      easyTotal: number;
+      mediumCorrect: number;
+      mediumTotal: number;
+      hardCorrect: number;
+      hardTotal: number;
+      narrative: string;
+      unresolvedQuestionIds: string[];
+      teacherAlertSent: boolean;
+    };
+    /**
+     * Populated when finishing Stage 2.5: S1 rollups + latest S2 attempt (DB) + this mistakes run,
+     * for a single combined Results overview.
+     */
+    mistakesTestCombinedAnalytics?: MistakesTestCombinedAnalyticsPayload;
   } | null;
   setLastSessionResults: (v: AppContextType['lastSessionResults']) => void;
   /**
@@ -359,6 +387,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 export type StageTwoProgressAnalyticsPayload = NonNullable<
   NonNullable<AppContextType['lastSessionResults']>['stageTwoProgressAnalytics']
 >;
+
+export type { MistakesTestCombinedAnalyticsPayload };
 
 export function useApp() {
   const context = useContext(AppContext);

@@ -8,6 +8,8 @@ import { FinalExam } from '@/app/components/FinalExam';
 import { Results } from '@/app/components/Results';
 import { Assessment } from '@/app/components/Assessment';
 import { StageTwoPreparation } from '@/app/components/StageTwoPreparation';
+import { MistakesTest } from '@/app/components/MistakesTest';
+import { TeacherInterventionsAdmin } from '@/app/components/TeacherInterventionsAdmin';
 import { AIChatbot } from '@/app/components/AIChatbot';
 import { SplashScreen } from '@/app/components/SplashScreen';
 import { Toaster } from '@/app/components/ui/sonner';
@@ -52,6 +54,10 @@ function AppContent() {
         return <Results />;
       case 'stageTwoPreparation':
         return <StageTwoPreparation />;
+      case 'mistakesTest':
+        return <MistakesTest />;
+      case 'teacherInterventions':
+        return <TeacherInterventionsAdmin />;
       default:
         return <Dashboard />;
     }

@@ -1,7 +1,10 @@
 /**
- * UI-only gate for admin-only tools (e.g. batch level backfill).
+ * UI-only gate for admin-only tools (e.g. batch level backfill, teacher interventions).
  * Set VITE_ADMIN_EMAILS to a comma-separated list (e.g. "a@x.com,b@y.com").
  * If unset, defaults to the project owner email below.
+ *
+ * For Supabase RLS on `intervention_flags`, the same addresses must exist in
+ * `public.app_staff_emails` (see Backend/sql/intervention_flags.sql).
  */
 const DEFAULT_ADMIN_EMAILS = ['mudassir@gmail.com', 'ibrahimqureshi45185823@gmail.com'];
 

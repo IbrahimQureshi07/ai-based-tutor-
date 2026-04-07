@@ -22,6 +22,7 @@ import {
   Zap,
   Focus,
   Layers,
+  AlertTriangle,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/app/components/ui/tooltip';
 import { aiSuggestions } from '@/app/data/exam-data';
@@ -31,6 +32,7 @@ import { backfillMissingQuestionLevels } from '@/app/services/questionLevels';
 import { isAdminEmail } from '@/app/utils/adminEmails';
 import { getCurrentUserId } from '@/app/services/userWrongQuestions';
 import { userHasCompletedStageOne } from '@/app/services/practiceStageTwoAggregation';
+import { userHasCompletedStageTwoPreparation } from '@/app/services/mistakesTestAggregation';
 
 export function Dashboard() {
   const {
@@ -55,6 +57,7 @@ export function Dashboard() {
   const [backfillMsg, setBackfillMsg] = useState<string | null>(null);
   const [showLevelBackfillAdmin, setShowLevelBackfillAdmin] = useState(false);
   const [stageTwoUnlocked, setStageTwoUnlocked] = useState(false);
+  const [stageTwoPrepDone, setStageTwoPrepDone] = useState(false);
 
   const mockTestUnlocked = userProgress.examReadiness >= 80;
   const finalExamUnlocked = userProgress.mockTestsCompleted >= 1 && userProgress.examReadiness >= 90;
@@ -76,11 +79,15 @@ export function Dashboard() {
       const uid = await getCurrentUserId();
       if (!uid) {
         setStageTwoUnlocked(false);
+        setStageTwoPrepDone(false);
         return;
       }
       setStageTwoUnlocked(await userHasCompletedStageOne(uid));
+      setStageTwoPrepDone(await userHasCompletedStageTwoPreparation(uid));
     })();
   }, []);
+
+  const mistakesTestUnlocked = stageTwoUnlocked && stageTwoPrepDone;
 
   // Check for unlock animations
   useEffect(() => {
@@ -371,6 +378,15 @@ export function Dashboard() {
                 {backfillBusy ? 'Running batch…' : 'Backfill missing levels'}
               </Button>
               {backfillMsg && <p className="text-xs text-muted-foreground mt-2">{backfillMsg}</p>}
+              <div className="mt-4 pt-4 border-t border-border/60">
+                <p className="text-xs text-muted-foreground mb-2">
+                  Stage 2.5 unresolved handoffs queue (<code className="text-[10px] bg-muted px-1 rounded">intervention_flags</code>
+                  ). Requires SQL migration + matching email in <code className="text-[10px] bg-muted px-1 rounded">app_staff_emails</code>.
+                </p>
+                <Button type="button" variant="secondary" size="sm" onClick={() => setCurrentScreen('teacherInterventions')}>
+                  Open teacher interventions
+                </Button>
+              </div>
             </Card>
           </motion.div>
         )}
@@ -474,6 +490,58 @@ export function Dashboard() {
                 </TooltipTrigger>
                 {!stageTwoUnlocked && (
                   <TooltipContent>Complete at least one Stage 1 topic assessment first</TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
+          </motion.div>
+
+          {/* Stage 2.5 — Mistakes test (after Stage 2 prep completed) */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.48 }}
+          >
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Card
+                    className={`p-6 transition-all ${
+                      mistakesTestUnlocked
+                        ? 'cursor-pointer hover:shadow-xl bg-card hover:border-rose-500/50 border-rose-500/15'
+                        : 'cursor-not-allowed opacity-70 bg-muted/30 border-muted'
+                    }`}
+                    onClick={() => {
+                      if (!mistakesTestUnlocked) return;
+                      setCurrentScreen('mistakesTest');
+                    }}
+                  >
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center">
+                          <AlertTriangle className="w-6 h-6 text-rose-600 dark:text-rose-400" />
+                        </div>
+                        {mistakesTestUnlocked ? (
+                          <Unlock className="w-6 h-6 text-rose-600 dark:text-rose-400" />
+                        ) : (
+                          <Lock className="w-6 h-6 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold mb-1">Stage 2.5 · Mistakes test</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {mistakesTestUnlocked
+                            ? 'Up to 110 Q · past mistakes + weighted fresh'
+                            : 'Finish Stage 1 + Stage 2 preparation first'}
+                        </p>
+                      </div>
+                      <Button className="w-full" variant="outline" disabled={!mistakesTestUnlocked}>
+                        {mistakesTestUnlocked ? 'Start mistakes test' : 'Locked'}
+                      </Button>
+                    </div>
+                  </Card>
+                </TooltipTrigger>
+                {!mistakesTestUnlocked && (
+                  <TooltipContent>Complete Stage 1 and at least one Stage 2 preparation run</TooltipContent>
                 )}
               </Tooltip>
             </TooltipProvider>
