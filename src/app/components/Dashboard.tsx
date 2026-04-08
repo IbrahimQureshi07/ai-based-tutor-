@@ -32,7 +32,10 @@ import { backfillMissingQuestionLevels } from '@/app/services/questionLevels';
 import { isAdminEmail } from '@/app/utils/adminEmails';
 import { getCurrentUserId } from '@/app/services/userWrongQuestions';
 import { userHasCompletedStageOne } from '@/app/services/practiceStageTwoAggregation';
-import { userHasCompletedStageTwoPreparation } from '@/app/services/mistakesTestAggregation';
+import { userHasCompletedStageTwoPreparation, userHasPassedMistakesTest } from '@/app/services/mistakesTestAggregation';
+import { userHasPassedMockTest } from '@/app/services/mockTest';
+import { fetchCrossTestAnalytics, type CrossTestAnalyticsPayload } from '@/app/services/crossTestAnalytics';
+import { CrossTestAnalyticsSection } from '@/app/components/CrossTestAnalyticsSection';
 
 export function Dashboard() {
   const {
@@ -43,11 +46,7 @@ export function Dashboard() {
     toggleTheme,
     setUserName,
     mistakesList,
-    setReviewMistakesQuestions,
-    setStartPracticeWithWeakAreas,
-    setPendingWeakPracticeBankIds,
     setSubjectSelectFor,
-    setSelectedPracticeSubject,
   } = useApp();
   const [focusMode, setFocusMode] = useState(false);
   const [showMockUnlock, setShowMockUnlock] = useState(false);
@@ -58,9 +57,11 @@ export function Dashboard() {
   const [showLevelBackfillAdmin, setShowLevelBackfillAdmin] = useState(false);
   const [stageTwoUnlocked, setStageTwoUnlocked] = useState(false);
   const [stageTwoPrepDone, setStageTwoPrepDone] = useState(false);
-
-  const mockTestUnlocked = userProgress.examReadiness >= 80;
-  const finalExamUnlocked = userProgress.mockTestsCompleted >= 1 && userProgress.examReadiness >= 90;
+  const [mockTestUnlocked, setMockTestUnlocked] = useState(false);
+  const [finalExamUnlocked, setFinalExamUnlocked] = useState(false);
+  const [crossAnalytics, setCrossAnalytics] = useState<CrossTestAnalyticsPayload | null>(null);
+  const [crossAnalyticsLoading, setCrossAnalyticsLoading] = useState(true);
+  const [crossAnalyticsError, setCrossAnalyticsError] = useState<string | null>(null);
 
   useEffect(() => {
     const syncAdmin = async () => {
@@ -80,10 +81,36 @@ export function Dashboard() {
       if (!uid) {
         setStageTwoUnlocked(false);
         setStageTwoPrepDone(false);
+        setMockTestUnlocked(false);
+        setFinalExamUnlocked(false);
         return;
       }
       setStageTwoUnlocked(await userHasCompletedStageOne(uid));
       setStageTwoPrepDone(await userHasCompletedStageTwoPreparation(uid));
+      setMockTestUnlocked(await userHasPassedMistakesTest(uid));
+      setFinalExamUnlocked(await userHasPassedMockTest(uid));
+    })();
+  }, []);
+
+  useEffect(() => {
+    setCrossAnalyticsLoading(true);
+    setCrossAnalyticsError(null);
+    void (async () => {
+      const uid = await getCurrentUserId();
+      if (!uid) {
+        setCrossAnalytics(null);
+        setCrossAnalyticsLoading(false);
+        return;
+      }
+      try {
+        const payload = await fetchCrossTestAnalytics(uid);
+        setCrossAnalytics(payload);
+      } catch (e) {
+        setCrossAnalyticsError(e instanceof Error ? e.message : 'Could not load cross-test analytics.');
+        setCrossAnalytics(null);
+      } finally {
+        setCrossAnalyticsLoading(false);
+      }
     })();
   }, []);
 
@@ -196,6 +223,34 @@ export function Dashboard() {
       </header>
 
       <div className="container mx-auto px-4 py-8 space-y-6">
+        {finalExamUnlocked && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+          >
+            <Card className="p-4 md:p-5 border-primary/40 bg-gradient-to-r from-primary/10 via-violet-500/10 to-purple-500/10 shadow-md">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                    <Trophy className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-base">Final exam unlocked</h3>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      You passed the mock (≥90% and no CRITICAL topic). Take the final when you are ready.
+                    </p>
+                  </div>
+                </div>
+                <Button className="shrink-0 w-full sm:w-auto gap-2" onClick={() => setCurrentScreen('final')}>
+                  <Trophy className="w-4 h-4" />
+                  Take final exam
+                </Button>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
         {/* Progress Overview */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Overall Progress Ring */}
@@ -300,6 +355,12 @@ export function Dashboard() {
           </motion.div>
         </div>
 
+        <CrossTestAnalyticsSection
+          data={crossAnalytics}
+          loading={crossAnalyticsLoading}
+          error={crossAnalyticsError}
+        />
+
         {/* AI Recommendation Widget */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -315,26 +376,37 @@ export function Dashboard() {
                 <h3 className="font-semibold mb-2">Personalized Assessment</h3>
                 <p className="text-muted-foreground mb-4">
                   {!userProgress.completedAssessment
-                    ? 'Start Stage 1 from any topic (A1–B6), or after your first completion open weak-area practice here.'
-                    : 'Based on your mistakes we can give you targeted practice. Continue where you left off.'}
+                    ? 'Start Stage 1 from any topic (A1–B6). After that, Stage 2 preparation unlocks for cross-topic practice.'
+                    : 'Continue with Stage 2 preparation, or pick another Stage 1 topic from the dashboard.'}
                 </p>
-                <Button
-                  onClick={() => {
-                    if (!userProgress.completedAssessment) {
-                      setSubjectSelectFor('assessment');
-                      setCurrentScreen('subjectSelect');
-                    } else {
-                      setSelectedPracticeSubject(null);
-                      setPendingWeakPracticeBankIds(null);
-                      setStartPracticeWithWeakAreas(true);
-                      setCurrentScreen('practice');
-                    }
-                  }}
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  <Zap className="w-4 h-4 mr-2" />
-                  {!userProgress.completedAssessment ? 'Choose Stage 1 topic' : 'Continue Practice'}
-                </Button>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={() => {
+                      if (!userProgress.completedAssessment) {
+                        setSubjectSelectFor('assessment');
+                        setCurrentScreen('subjectSelect');
+                      } else if (stageTwoUnlocked) {
+                        setCurrentScreen('stageTwoPreparation');
+                      } else {
+                        setSubjectSelectFor('assessment');
+                        setCurrentScreen('subjectSelect');
+                      }
+                    }}
+                    className="bg-primary hover:bg-primary/90"
+                  >
+                    <Zap className="w-4 h-4 mr-2" />
+                    {!userProgress.completedAssessment
+                      ? 'Choose Stage 1 topic'
+                      : stageTwoUnlocked
+                        ? 'Open Stage 2 preparation'
+                        : 'Next Stage 1 topic'}
+                  </Button>
+                  {finalExamUnlocked && (
+                    <Button variant="secondary" onClick={() => setCurrentScreen('final')}>
+                      Go to Final Exam
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           </Card>
@@ -547,39 +619,6 @@ export function Dashboard() {
             </TooltipProvider>
           </motion.div>
 
-          {/* Practice Test */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.5 }}
-          >
-            <Card 
-              className="p-6 cursor-pointer transition-all hover:shadow-xl bg-card hover:border-primary/50"
-              onClick={() => {
-                setSubjectSelectFor('practice');
-                setCurrentScreen('subjectSelect');
-              }}
-            >
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <BookOpen className="w-6 h-6 text-primary" />
-                  </div>
-                  <Unlock className="w-6 h-6 text-success" />
-                </div>
-                <div>
-                  <h3 className="font-semibold mb-1">Practice Test</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Build your skills with hints
-                  </p>
-                </div>
-                <Button className="w-full bg-primary hover:bg-primary/90">
-                  Start Practice
-                </Button>
-              </div>
-            </Card>
-          </motion.div>
-
           {/* Mock Test */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -597,8 +636,7 @@ export function Dashboard() {
                     }`}
                     onClick={() => {
                       if (mockTestUnlocked) {
-                        setSubjectSelectFor('mock');
-                        setCurrentScreen('subjectSelect');
+                        setCurrentScreen('mock');
                       }
                     }}
                   >
@@ -618,7 +656,7 @@ export function Dashboard() {
                         <p className="text-sm text-muted-foreground">
                           {mockTestUnlocked 
                             ? 'Exam-like conditions' 
-                            : 'Requires 80% readiness'}
+                            : 'Pass Stage 2.5 (no CRITICAL) to unlock'}
                         </p>
                       </div>
                       <Button 
@@ -633,7 +671,7 @@ export function Dashboard() {
                 </TooltipTrigger>
                 {!mockTestUnlocked && (
                   <TooltipContent>
-                    Unlock at 80% exam readiness
+                    Pass the latest mistakes test first (CRITICAL blocks mock)
                   </TooltipContent>
                 )}
               </Tooltip>
@@ -676,7 +714,7 @@ export function Dashboard() {
                         <p className="text-sm text-muted-foreground">
                           {finalExamUnlocked 
                             ? 'Get your certificate!' 
-                            : '1 mock test + 90% ready'}
+                            : 'Pass Mock Test (>=90% and no CRITICAL)'}
                         </p>
                       </div>
                       <Button 
@@ -691,7 +729,7 @@ export function Dashboard() {
                 </TooltipTrigger>
                 {!finalExamUnlocked && (
                   <TooltipContent>
-                    Complete 1 mock test and reach 90% readiness
+                    Pass at least one mock attempt to unlock final exam
                   </TooltipContent>
                 )}
               </Tooltip>
@@ -729,12 +767,16 @@ export function Dashboard() {
                   <Button
                     variant="destructive"
                     onClick={() => {
-                      setSelectedPracticeSubject(null);
-                      setReviewMistakesQuestions(mistakesList.map((m) => m.question));
-                      setCurrentScreen('practice');
+                      if (mistakesTestUnlocked) setCurrentScreen('mistakesTest');
+                      else if (stageTwoUnlocked) setCurrentScreen('stageTwoPreparation');
+                      else setCurrentScreen('dashboard');
                     }}
                   >
-                    Review Mistakes
+                    {mistakesTestUnlocked
+                      ? 'Open mistakes test'
+                      : stageTwoUnlocked
+                        ? 'Open Stage 2 preparation'
+                        : 'View dashboard'}
                   </Button>
                 </div>
               </div>

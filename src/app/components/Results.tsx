@@ -3,92 +3,44 @@ import { useApp } from '@/app/context/ExamContext';
 import { Button } from '@/app/components/ui/button';
 import { Card } from '@/app/components/ui/card';
 import { Progress } from '@/app/components/ui/progress';
-import { 
-  Trophy, 
-  TrendingUp, 
-  Target, 
-  Award, 
+import {
+  Trophy,
+  TrendingUp,
+  Target,
+  Award,
   ArrowRight,
   BookOpen,
   AlertCircle,
   CheckCircle2,
   Share2,
-  ChevronRight,
-  Lock,
+  AlertTriangle,
+  RotateCcw,
 } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  Radar,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
 import { useEffect, useState } from 'react';
-import { SUBJECTS, type SubjectMeta } from '@/app/data/subjects';
 import { StageTwoProgressAnalyticsSection } from '@/app/components/StageTwoProgressAnalyticsSection';
 import { ThreeStageCombinedAnalyticsSection } from '@/app/components/ThreeStageCombinedAnalyticsSection';
 import { JourneyAiReportSection } from '@/app/components/JourneyAiReportSection';
 import { LEVEL_SLUGS, LEVEL_BAND_LABELS, type LevelBandSlug } from '@/app/constants/levelBands';
-
-function TopicPracticeCard({
-  s,
-  delayIndex,
-  done,
-  onPick,
-}: {
-  s: SubjectMeta;
-  delayIndex: number;
-  done: boolean;
-  onPick: () => void;
-}) {
-  const anim = {
-    initial: { opacity: 0, y: 10 },
-    animate: { opacity: 1, y: 0 },
-    transition: { delay: 0.05 * delayIndex },
-  };
-
-  const inner = (
-    <>
-      <div className="flex items-center gap-3">
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${s.iconBgClass}`}>
-          <s.Icon className="w-4 h-4" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between gap-1">
-            <p className="font-semibold text-xs leading-snug truncate">{s.label}</p>
-            {done ? (
-              <span className="flex items-center gap-1 flex-shrink-0 text-muted-foreground" title="Completed for this session">
-                <Lock className="w-3.5 h-3.5" aria-hidden />
-                <span className="text-[10px] font-semibold uppercase tracking-wide">Locked</span>
-              </span>
-            ) : (
-              <ChevronRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-            )}
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">{s.desc}</p>
-        </div>
-      </div>
-    </>
-  );
-
-  if (done) {
-    return (
-      <motion.div
-        {...anim}
-        className={`w-full text-left p-3 rounded-xl border-2 transition-all duration-200 relative border-success/30 bg-muted/30 opacity-80 cursor-not-allowed`}
-        aria-disabled
-        title="Completed — choose another topic to continue"
-      >
-        {inner}
-      </motion.div>
-    );
-  }
-
-  return (
-    <motion.button
-      {...anim}
-      type="button"
-      onClick={onPick}
-      className={`w-full text-left p-3 rounded-xl border-2 transition-all duration-200 group relative bg-card hover:shadow-md ${s.accentClass}`}
-    >
-      {inner}
-    </motion.button>
-  );
-}
+import { getCurrentUserId } from '@/app/services/userWrongQuestions';
+import { userHasPassedMistakesTest } from '@/app/services/mistakesTestAggregation';
+import { userHasPassedMockTest } from '@/app/services/mockTest';
 
 export function Results() {
   const {
@@ -97,13 +49,11 @@ export function Results() {
     addChatMessage,
     setChatOpen,
     lastSessionResults,
-    setStartPracticeWithWeakAreas,
-    setPendingWeakPracticeBankIds,
     setSubjectSelectFor,
-    setSelectedPracticeSubject,
-    completedPracticeSubjects,
   } = useApp();
   const [hasCheckedUnlock, setHasCheckedUnlock] = useState(false);
+  const [mockEligible, setMockEligible] = useState(false);
+  const [finalEligible, setFinalEligible] = useState(false);
 
   // Use last test session for all numbers and charts; fallback to userProgress when no session data
   const total = lastSessionResults?.total ?? userProgress.totalQuestions;
@@ -114,26 +64,54 @@ export function Results() {
   // Check for auto-unlock on mount
   useEffect(() => {
     if (hasCheckedUnlock) return;
-    
-    const mockTestUnlocked = userProgress.examReadiness >= 80;
-    const finalExamUnlocked = userProgress.mockTestsCompleted >= 1 && userProgress.examReadiness >= 90;
-    
-    if (mockTestUnlocked && userProgress.examReadiness >= 80 && userProgress.totalQuestions > 5) {
+    void (async () => {
+      const uid = await getCurrentUserId();
+      const canMock = uid ? await userHasPassedMistakesTest(uid) : false;
+      const canFinal = uid ? await userHasPassedMockTest(uid) : false;
+      setMockEligible(canMock);
+      setFinalEligible(canFinal);
+      if (canFinal) {
+        setTimeout(() => {
+          addChatMessage('ai', '🏆 Outstanding! You passed mock criteria. Final Exam is now unlocked.');
+          setChatOpen(true);
+        }, 1000);
+      }
+      setHasCheckedUnlock(true);
+    })();
+  }, [addChatMessage, hasCheckedUnlock, setChatOpen]);
+
+  /** After a mock run, refresh DB-backed unlock flags so Final shortcut updates immediately. */
+  useEffect(() => {
+    if (!lastSessionResults?.mockTestAssessment) return;
+    void (async () => {
+      const uid = await getCurrentUserId();
+      if (!uid) return;
+      setMockEligible(await userHasPassedMistakesTest(uid));
+      setFinalEligible(await userHasPassedMockTest(uid));
+    })();
+  }, [lastSessionResults?.mockTestAssessment]);
+
+  const getNextUnlock = () => {
+    if (finalEligible) {
+      return { title: 'Final Exam', message: 'Unlocked now. You can go straight to the final exam.' };
+    }
+    if (mockEligible) {
+      return { title: 'Mock Test', message: 'Unlocked now. Pass mock (>=90% and no CRITICAL) to unlock final.' };
+    }
+    return { title: 'Mock Test', message: 'First pass Stage 2.5 mistakes test (latest run must not be CRITICAL).' };
+  };
+
+  const nextUnlock = getNextUnlock();
+
+  useEffect(() => {
+    if (!finalEligible || !hasCheckedUnlock) return;
+    if (userProgress.mockTestsCompleted >= 1) {
       setTimeout(() => {
-        addChatMessage('ai', '🎉 Great job! You\'ve reached 80% readiness. Mock Test is now unlocked!');
+        addChatMessage('ai', '🏆 Final exam unlocked. Best of luck!');
         setChatOpen(true);
       }, 1000);
     }
-    
-    if (finalExamUnlocked && userProgress.mockTestsCompleted >= 1) {
-      setTimeout(() => {
-        addChatMessage('ai', '🏆 Outstanding! You\'re ready for the Final Exam. Stay focused and confident.');
-        setChatOpen(true);
-      }, 1000);
-    }
-    
-    setHasCheckedUnlock(true);
-  }, [userProgress.examReadiness, userProgress.mockTestsCompleted, hasCheckedUnlock]);
+  }, [addChatMessage, finalEligible, hasCheckedUnlock, setChatOpen, userProgress.mockTestsCompleted]);
 
   const pieData = [
     { name: 'Correct', value: correct, color: '#10B981' },
@@ -194,59 +172,149 @@ export function Results() {
 
   const performance = getPerformanceMessage();
 
-  const getNextUnlock = () => {
-    if (userProgress.examReadiness >= 90 && userProgress.mockTestsCompleted >= 1) {
-      return { title: 'Final Exam', message: 'You can now take the final exam!' };
-    }
-    if (userProgress.examReadiness >= 80) {
-      return { title: 'Mock Test', message: 'You can now take mock tests!' };
-    }
-    return { title: 'Mock Test', message: `Reach ${80 - userProgress.examReadiness}% more readiness to unlock` };
-  };
+  const mockA = lastSessionResults?.mockTestAssessment;
+  const mockFirstTryDisplay =
+    mockA && mockA.totalSlots > 0
+      ? mockA.firstTryPercent ??
+        Math.round(((mockA.firstTryCorrectCount / mockA.totalSlots) * 1000) / 10)
+      : null;
 
-  const nextUnlock = getNextUnlock();
+  const mockFailExplanation = (() => {
+    if (!mockA || mockA.isPass) return null;
+    const fr = mockA.failReason;
+    if (fr === 'below_threshold') {
+      return `Final score is below ${mockA.passThresholdPercent}% (required to pass the mock).`;
+    }
+    if (fr === 'critical_topic') {
+      return 'At least one topic reached the CRITICAL band (first-try % plus recovery rule).';
+    }
+    if (fr === 'both') {
+      return `Below ${mockA.passThresholdPercent}% and at least one topic in CRITICAL.`;
+    }
+    if (mockA.hasCriticalBand && mockA.percentFinal < mockA.passThresholdPercent) {
+      return `Below ${mockA.passThresholdPercent}% and CRITICAL topic(s).`;
+    }
+    if (mockA.hasCriticalBand) return 'At least one topic in CRITICAL.';
+    return `Below ${mockA.passThresholdPercent}%.`;
+  })();
+
+  const mockCompareChart =
+    mockA && mockFirstTryDisplay !== null
+      ? [
+          { name: 'First-try %', value: mockFirstTryDisplay },
+          { name: 'Final %', value: mockA.percentFinal },
+        ]
+      : [];
+
+  const mockRetryChart =
+    mockA && mockA.retryUsedCount > 0
+      ? [
+          { name: 'Recovered on retry', value: mockA.retryCorrectCount, fill: '#10B981' },
+          { name: 'Wrong after retry', value: mockA.retryWrongCount, fill: '#EF4444' },
+        ].filter((d) => d.value > 0)
+      : [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-primary/5">
-      {/* Hero Section */}
-      <div className="bg-gradient-to-r from-primary via-purple-500 to-pink-500 text-white py-12">
-        <div className="container mx-auto px-4">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center"
-          >
+      {/* Hero: mock session vs default */}
+      {mockA ? (
+        <div className="bg-gradient-to-r from-sky-700 via-indigo-700 to-violet-800 text-white py-10 md:py-12">
+          <div className="container mx-auto px-4">
             <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ type: 'spring', delay: 0.2 }}
-              className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-white/20 backdrop-blur-sm mb-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center max-w-3xl mx-auto"
             >
-              <Trophy className="w-12 h-12" />
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', delay: 0.15 }}
+                className={`inline-flex items-center justify-center w-20 h-20 rounded-full mb-5 ${
+                  mockA.isPass ? 'bg-emerald-500/30' : 'bg-amber-500/25'
+                }`}
+              >
+                {mockA.isPass ? (
+                  <CheckCircle2 className="w-10 h-10 text-emerald-200" />
+                ) : (
+                  <AlertTriangle className="w-10 h-10 text-amber-200" />
+                )}
+              </motion.div>
+              <p className="text-sm uppercase tracking-widest text-white/70 mb-2">Mock exam</p>
+              <h1 className="text-3xl md:text-5xl font-bold mb-2">
+                {mockA.isPass ? 'Passed' : 'Not passed'}
+              </h1>
+              <p className="text-white/85 text-lg mb-6">
+                {mockA.isPass
+                  ? 'You met the final score and topic rules. Final exam may be unlocked.'
+                  : 'See below for first-try vs final score and why the mock did not pass.'}
+              </p>
+              <div className="flex flex-wrap items-end justify-center gap-8 md:gap-12 mb-6">
+                <div>
+                  <div className="text-5xl md:text-6xl font-bold tabular-nums">{mockA.percentFinal}%</div>
+                  <div className="text-white/75 text-sm mt-1">Final score (slot)</div>
+                </div>
+                <div className="hidden sm:block w-px h-20 bg-white/25" />
+                <div>
+                  <div className="text-4xl md:text-5xl font-bold tabular-nums text-sky-200">
+                    {mockFirstTryDisplay}%
+                  </div>
+                  <div className="text-white/75 text-sm mt-1">First-try only</div>
+                </div>
+                <div className="hidden sm:block w-px h-20 bg-white/25" />
+                <div>
+                  <div className="text-2xl md:text-3xl font-semibold tabular-nums">
+                    ≥{mockA.passThresholdPercent}%
+                  </div>
+                  <div className="text-white/75 text-sm mt-1">Pass threshold</div>
+                </div>
+              </div>
+              {!mockA.isPass && mockFailExplanation && (
+                <div className="rounded-xl border border-white/20 bg-black/25 px-4 py-3 text-left text-sm text-white/95 max-w-xl mx-auto">
+                  <span className="font-semibold text-amber-200">Why not passed: </span>
+                  {mockFailExplanation}
+                </div>
+              )}
             </motion.div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">
-              {performance.title}
-            </h1>
-            <p className="text-xl text-white/90 mb-6">{performance.message}</p>
-            <div className="flex items-center justify-center gap-8">
-              <div>
-                <div className="text-5xl font-bold">{total > 0 ? sessionAccuracy : userProgress.accuracy}%</div>
-                <div className="text-white/80">Accuracy</div>
-              </div>
-              <div className="w-px h-16 bg-white/30" />
-              <div>
-                <div className="text-5xl font-bold">{total}</div>
-                <div className="text-white/80">Questions</div>
-              </div>
-              <div className="w-px h-16 bg-white/30" />
-              <div>
-                <div className="text-5xl font-bold">{userProgress.level}</div>
-                <div className="text-white/80">Level</div>
-              </div>
-            </div>
-          </motion.div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="bg-gradient-to-r from-primary via-purple-500 to-pink-500 text-white py-12">
+          <div className="container mx-auto px-4">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-center"
+            >
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: 'spring', delay: 0.2 }}
+                className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-white/20 backdrop-blur-sm mb-6"
+              >
+                <Trophy className="w-12 h-12" />
+              </motion.div>
+              <h1 className="text-4xl md:text-5xl font-bold mb-4">{performance.title}</h1>
+              <p className="text-xl text-white/90 mb-6">{performance.message}</p>
+              <div className="flex items-center justify-center gap-8">
+                <div>
+                  <div className="text-5xl font-bold">{total > 0 ? sessionAccuracy : userProgress.accuracy}%</div>
+                  <div className="text-white/80">Accuracy</div>
+                </div>
+                <div className="w-px h-16 bg-white/30" />
+                <div>
+                  <div className="text-5xl font-bold">{total}</div>
+                  <div className="text-white/80">Questions</div>
+                </div>
+                <div className="w-px h-16 bg-white/30" />
+                <div>
+                  <div className="text-5xl font-bold">{userProgress.level}</div>
+                  <div className="text-white/80">Level</div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
 
       <div className="container mx-auto px-4 py-8 space-y-6">
         {lastSessionResults?.mistakesTestCombinedAnalytics && (
@@ -254,6 +322,130 @@ export function Results() {
         )}
 
         <JourneyAiReportSection />
+
+        {lastSessionResults?.mockTestAssessment && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.06 }}
+          >
+            <Card className="p-6 md:p-8 border-sky-500/30 bg-gradient-to-br from-sky-500/[0.07] to-background">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-sky-600 dark:text-sky-400">
+                    Mock exam · Slot-final scoring
+                  </p>
+                  <h2 className="text-xl font-bold mt-1">Full mock results</h2>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-prose">
+                    {lastSessionResults.mockTestAssessment.narrative} Final percent counts a slot correct only after retry (if
+                    any). Pass needs ≥{lastSessionResults.mockTestAssessment.passThresholdPercent}% and no topic in the CRITICAL
+                    band.
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Mock pass</p>
+                  <p className="text-lg font-bold">
+                    {lastSessionResults.mockTestAssessment.isPass ? '✅ Passed' : '❌ Not passed'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Final %</p>
+                  <p className="text-2xl font-bold text-primary">{lastSessionResults.mockTestAssessment.percentFinal}%</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Correct ÷ {lastSessionResults.mockTestAssessment.totalSlots}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">First-try correct</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.mockTestAssessment.firstTryCorrectCount}</p>
+                </div>
+                <div className="rounded-xl bg-amber-500/10 p-3 border border-amber-500/20">
+                  <p className="text-xs text-amber-800 dark:text-amber-200">Retries used</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.mockTestAssessment.retryUsedCount}</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    {lastSessionResults.mockTestAssessment.retryCorrectCount} recovered ·{' '}
+                    {lastSessionResults.mockTestAssessment.retryWrongCount} still wrong
+                  </p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Skipped slots</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.mockTestAssessment.skippedSlots}</p>
+                </div>
+              </div>
+
+              {mockCompareChart.length > 0 && (
+                <div className="mb-6 mt-2">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">First-try vs final (all slots)</p>
+                  <div className="h-52 w-full min-w-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={mockCompareChart} margin={{ top: 8, right: 12, left: 4, bottom: 4 }}>
+                        <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} interval={0} />
+                        <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} width={32} />
+                        <Tooltip formatter={(v: number) => [`${v}%`, 'Score']} />
+                        <Bar dataKey="value" fill="#0ea5e9" radius={[6, 6, 0, 0]} name="%" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {mockRetryChart.length > 0 && lastSessionResults.mockTestAssessment.retryUsedCount > 0 && (
+                <div className="mb-2">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    Retry outcomes ({lastSessionResults.mockTestAssessment.retryUsedCount} first-wrong slots)
+                  </p>
+                  <div className="h-56 w-full min-w-0 max-w-md mx-auto">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={mockRetryChart}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="50%"
+                          outerRadius={78}
+                          label={({ name, value }) => `${name}: ${value}`}
+                        >
+                          {mockRetryChart.map((e, i) => (
+                            <Cell key={i} fill={e.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-2">
+                {mockEligible && (
+                  <Button
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => {
+                      setSubjectSelectFor('mock');
+                      setCurrentScreen('mock');
+                    }}
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Retake mock exam
+                  </Button>
+                )}
+                {finalEligible && (
+                  <Button className="gap-2 bg-primary" onClick={() => setCurrentScreen('final')}>
+                    <Trophy className="w-4 h-4" />
+                    Take final exam
+                  </Button>
+                )}
+              </div>
+            </Card>
+          </motion.div>
+        )}
 
         {lastSessionResults?.stageOneAssessment && (
           <motion.div
@@ -697,21 +889,12 @@ export function Results() {
               )}
             </div>
             <Button
-              onClick={() => {
-                setSelectedPracticeSubject(null);
-                setPendingWeakPracticeBankIds(
-                  lastSessionResults?.weakBankQuestionIds !== undefined
-                    ? lastSessionResults.weakBankQuestionIds
-                    : null
-                );
-                setStartPracticeWithWeakAreas(true);
-                setCurrentScreen('practice');
-              }}
+              onClick={() => setCurrentScreen('stageTwoPreparation')}
               variant="destructive"
               className="w-full"
             >
               <BookOpen className="w-4 h-4 mr-2" />
-              Practice Weak Areas
+              Open Stage 2 preparation
             </Button>
           </Card>
         </motion.div>
@@ -734,16 +917,26 @@ export function Results() {
                 <ArrowRight className="w-4 h-4" />
               </Button>
               <Button
-                onClick={() => {
-                  setSubjectSelectFor('practice');
-                  setCurrentScreen('subjectSelect');
-                }}
+                onClick={() => setCurrentScreen(finalEligible ? 'final' : mockEligible ? 'mock' : 'stageTwoPreparation')}
                 variant="outline"
                 className="gap-2"
               >
                 <BookOpen className="w-4 h-4" />
-                Continue Practice
+                {finalEligible ? 'Go to Final Exam' : mockEligible ? 'Go to Mock Test' : 'Stage 2 preparation'}
               </Button>
+              {mockEligible && (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  onClick={() => {
+                    setSubjectSelectFor('mock');
+                    setCurrentScreen('mock');
+                  }}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Restart mock
+                </Button>
+              )}
               <Button
                 variant="outline"
                 className="gap-2"
@@ -751,75 +944,6 @@ export function Results() {
                 <Share2 className="w-4 h-4" />
                 Share Results
               </Button>
-            </div>
-          </Card>
-        </motion.div>
-
-        {/* Next Topics to Practice */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.65 }}
-        >
-          <Card className="p-6">
-            <h3 className="font-semibold mb-1 flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-primary" />
-              Practice by Topic
-            </h3>
-            <p className="text-sm text-muted-foreground mb-5">
-              {completedPracticeSubjects.length === 0
-                ? 'Pick a topic to start subject-wise practice.'
-                : completedPracticeSubjects.length >= SUBJECTS.length
-                ? 'All topics completed this session. Completed cards stay locked here.'
-                : `${SUBJECTS.length - completedPracticeSubjects.length} topic${SUBJECTS.length - completedPracticeSubjects.length > 1 ? 's' : ''} remaining — keep going!`}
-            </p>
-
-            {/* Section A */}
-            <div className="mb-5">
-              <p className="text-xs font-bold text-primary uppercase tracking-wider mb-3 px-1">
-                Section A — National Topics
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {SUBJECTS.filter((s) => s.section === 'A').map((s, i) => {
-                  const done = completedPracticeSubjects.includes(s.key);
-                  return (
-                    <TopicPracticeCard
-                      key={s.key}
-                      s={s}
-                      delayIndex={i}
-                      done={done}
-                      onPick={() => {
-                        setSelectedPracticeSubject(s.key);
-                        setCurrentScreen('practice');
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Section B */}
-            <div>
-              <p className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-3 px-1">
-                Section B — State Topics
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                {SUBJECTS.filter((s) => s.section === 'B').map((s, i) => {
-                  const done = completedPracticeSubjects.includes(s.key);
-                  return (
-                    <TopicPracticeCard
-                      key={s.key}
-                      s={s}
-                      delayIndex={i + 6}
-                      done={done}
-                      onPick={() => {
-                        setSelectedPracticeSubject(s.key);
-                        setCurrentScreen('practice');
-                      }}
-                    />
-                  );
-                })}
-              </div>
             </div>
           </Card>
         </motion.div>

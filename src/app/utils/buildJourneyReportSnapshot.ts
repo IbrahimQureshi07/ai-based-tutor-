@@ -146,7 +146,8 @@ export async function buildJourneyReportSnapshot(
       examReadiness: userProgress.examReadiness,
       level: userProgress.level,
       mockTestsCompleted: userProgress.mockTestsCompleted,
-      mockUnlockedByReadiness: userProgress.examReadiness >= 80,
+      // Legacy field name retained for compatibility with stored report shape.
+      mockUnlockedByReadiness: s1Done && s2PrepDone,
     },
     gates: {
       stageOneStarted: s1Done,

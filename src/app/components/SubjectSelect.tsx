@@ -2,7 +2,7 @@ import { motion } from 'motion/react';
 import { useEffect, useState } from 'react';
 import { useApp } from '@/app/context/ExamContext';
 import { Button } from '@/app/components/ui/button';
-import { ArrowLeft, BookOpen, ClipboardList, ChevronRight, ClipboardCheck } from 'lucide-react';
+import { ArrowLeft, ClipboardList, ChevronRight, ClipboardCheck } from 'lucide-react';
 import { SUBJECTS, type SubjectMeta } from '@/app/data/subjects';
 import { getCurrentUserId } from '@/app/services/userWrongQuestions';
 import { fetchCompletedAssessmentTopicCodes } from '@/app/services/assessmentStageOne';
@@ -31,18 +31,16 @@ function SubjectCard({
 }: {
   meta: SubjectMeta;
   index: number;
-  mode: 'practice' | 'mock' | 'assessment';
+  mode: 'mock' | 'assessment';
   completedTopic?: boolean;
   onPick: (key: string) => void;
 }) {
   const { Icon, label, desc, accentClass, iconBgClass } = meta;
 
   const subtitle =
-    mode === 'practice'
-      ? '5 random questions'
-      : mode === 'mock'
-        ? 'Full topic mock'
-        : '35 questions · 12 easy / 13 medium / 10 hard';
+    mode === 'mock'
+      ? 'Full topic mock'
+      : '35 questions · 12 easy / 13 medium / 10 hard';
 
   return (
     <motion.div
@@ -83,7 +81,6 @@ export function SubjectSelect() {
   const {
     setCurrentScreen,
     subjectSelectFor,
-    setSelectedPracticeSubject,
     setSelectedMockSubject,
     setSelectedAssessmentTopic,
   } = useApp();
@@ -100,14 +97,10 @@ export function SubjectSelect() {
     })();
   }, [subjectSelectFor]);
 
-  const isPractice = subjectSelectFor === 'practice';
   const isAssessment = subjectSelectFor === 'assessment';
 
   const handlePick = (subjectKey: string) => {
-    if (isPractice) {
-      setSelectedPracticeSubject(subjectKey);
-      setCurrentScreen('practice');
-    } else if (isAssessment) {
+    if (isAssessment) {
       setSelectedAssessmentTopic(subjectKey);
       setCurrentScreen('assessment');
     } else {
@@ -138,11 +131,7 @@ export function SubjectSelect() {
           className="mb-10"
         >
           <div className="flex items-center gap-3 mb-2">
-            {isPractice ? (
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                <BookOpen className="w-5 h-5 text-primary" />
-              </div>
-            ) : isAssessment ? (
+            {isAssessment ? (
               <div className="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center">
                 <ClipboardCheck className="w-5 h-5 text-violet-600 dark:text-violet-400" />
               </div>
@@ -153,18 +142,12 @@ export function SubjectSelect() {
             )}
             <div>
               <h1 className="text-2xl md:text-3xl font-bold">
-                {isPractice
-                  ? 'Choose a topic'
-                  : isAssessment
-                    ? 'Stage 1 — Choose a topic'
-                    : 'Mock Test — Choose a topic'}
+                {isAssessment ? 'Stage 1 — Choose a topic' : 'Mock Test — Choose a topic'}
               </h1>
               <p className="text-muted-foreground text-sm">
-                {isPractice
-                  ? '5 random questions per session · different mix each time'
-                  : isAssessment
-                    ? '35 questions per topic · first-try score + medium/hard wrong tracking'
-                    : 'Full question set for the chosen topic'}
+                {isAssessment
+                  ? '35 questions per topic · first-try score + medium/hard wrong tracking'
+                  : 'Full question set for the chosen topic'}
               </p>
             </div>
           </div>
@@ -206,7 +189,7 @@ function SubjectSection({
 }: {
   section: 'A' | 'B';
   subjects: SubjectMeta[];
-  mode: 'practice' | 'mock' | 'assessment';
+  mode: 'mock' | 'assessment';
   completedAssessmentTopics: string[];
   onPick: (key: string) => void;
   globalOffset: number;

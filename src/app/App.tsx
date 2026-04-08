@@ -1,7 +1,6 @@
 import { AppProvider, useApp } from '@/app/context/ExamContext';
 import { AuthScreen } from '@/app/components/AuthScreen';
 import { Dashboard } from '@/app/components/Dashboard';
-import { PracticeTest } from '@/app/components/PracticeTest';
 import { MockTest } from '@/app/components/MockTest';
 import { SubjectSelect } from '@/app/components/SubjectSelect';
 import { FinalExam } from '@/app/components/FinalExam';
@@ -44,8 +43,6 @@ function AppContent() {
         return <Assessment />;
       case 'subjectSelect':
         return <SubjectSelect />;
-      case 'practice':
-        return <PracticeTest />;
       case 'mock':
         return <MockTest />;
       case 'final':

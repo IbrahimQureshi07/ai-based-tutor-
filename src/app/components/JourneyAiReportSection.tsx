@@ -39,12 +39,12 @@ function mockHeuristic(snapshot: JourneyReportSnapshot | null): string {
     return `You have completed ${app.mockTestsCompleted} mock test(s). Readiness ${app.examReadiness}%.`;
   }
   if (app.mockUnlockedByReadiness) {
-    return `Exam readiness is ${app.examReadiness}% — mock test is unlocked. Stage completion helps confidence before sitting mocks.`;
+    return 'Your latest Stage 2.5 run is non-critical, so mock can be attempted now.';
   }
   if (!gates.stageOneStarted) {
-    return 'Finish at least one Stage 1 topic to unlock Stage 2 and build readiness toward mock tests.';
+    return 'Finish at least one Stage 1 topic to unlock Stage 2 progression.';
   }
-  return `Keep building readiness (currently ${app.examReadiness}%). Aim for 80%+ for mock unlock alongside strong Stage 1–2 performance.`;
+  return 'Pass Stage 2.5 without CRITICAL status to unlock mock.';
 }
 
 export function JourneyAiReportSection() {
@@ -152,9 +152,7 @@ export function JourneyAiReportSection() {
               <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
                 Topic strength uses your latest Stage 1 first-try % per subject (75%+ strong, 50–74% average, below 50%
                 needs work). Stage 2 columns use your most recent completed prep run. Generate AI for a written plan,
-                unresolved follow-ups, and mock-test guidance. Each generation is stored in Supabase (
-                <code className="text-[10px] bg-muted px-1 rounded">journey_ai_reports</code>) and reloaded on your next
-                visit to Results.
+                follow-ups, and mock guidance—reports save to your account and load again when you open Results.
               </p>
             </div>
           </div>

@@ -45,3 +45,69 @@ export function emptyTierBreakdown(): Record<AssessmentTier, { correct: number; 
     hard: { correct: 0, total: 0 },
   };
 }
+
+/** Per-topic mock rollup: first-try % + recovery bonus (same shape as Stage 1 adjusted band). */
+export type MockTopicRollupEntry = {
+  total: number;
+  correctFirstTry: number;
+  mediumWrong: number;
+  hardWrong: number;
+  skipped: number;
+  rawScore: number;
+  adjustedScore: number;
+  statusBand: StatusBand;
+};
+
+/**
+ * If any topic’s adjusted band is CRITICAL, the mock fails regardless of overall percent.
+ */
+export function mockTopicRollupsAndCritical(
+  slots: Array<{
+    topicCode: string;
+    firstTryCorrect: boolean;
+    finalSkipped: boolean;
+    retryRecovery: boolean;
+    hardWrongPattern: boolean;
+  }>
+): { topicRollup: Record<string, MockTopicRollupEntry>; hasCriticalBand: boolean } {
+  const buckets = new Map<
+    string,
+    { T: number; cf: number; mw: number; hw: number; sk: number }
+  >();
+
+  for (const s of slots) {
+    const code = (s.topicCode || 'General').trim() || 'General';
+    let b = buckets.get(code);
+    if (!b) {
+      b = { T: 0, cf: 0, mw: 0, hw: 0, sk: 0 };
+      buckets.set(code, b);
+    }
+    b.T += 1;
+    if (s.finalSkipped) b.sk += 1;
+    else if (s.firstTryCorrect) b.cf += 1;
+    else if (s.retryRecovery) b.mw += 1;
+    else if (s.hardWrongPattern) b.hw += 1;
+  }
+
+  const topicRollup: Record<string, MockTopicRollupEntry> = {};
+  let hasCriticalBand = false;
+
+  for (const [code, b] of buckets) {
+    const rawScore = computeRawScorePercentForTotal(b.cf, b.T);
+    const adjustedScore = computeAdjustedScore(rawScore, b.mw);
+    const statusBand = statusBandFromAdjusted(adjustedScore);
+    if (b.T > 0 && statusBand === 'CRITICAL') hasCriticalBand = true;
+    topicRollup[code] = {
+      total: b.T,
+      correctFirstTry: b.cf,
+      mediumWrong: b.mw,
+      hardWrong: b.hw,
+      skipped: b.sk,
+      rawScore,
+      adjustedScore,
+      statusBand,
+    };
+  }
+
+  return { topicRollup, hasCriticalBand };
+}

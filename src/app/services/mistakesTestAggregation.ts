@@ -160,3 +160,18 @@ export async function userHasCompletedStageTwoPreparation(userId: string): Promi
   if (error) return false;
   return (count ?? 0) > 0;
 }
+
+/** Mock eligibility gate: latest completed Stage 2.5 must not be CRITICAL. */
+export async function userHasPassedMistakesTest(userId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('mistakes_test_attempts')
+    .select('status_band')
+    .eq('user_id', userId)
+    .eq('status', 'completed')
+    .order('completed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) return false;
+  return String((data as { status_band: string | null }).status_band ?? '').toUpperCase() !== 'CRITICAL';
+}

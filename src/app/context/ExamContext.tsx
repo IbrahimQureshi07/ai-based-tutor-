@@ -1,7 +1,12 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { UserProgress, initialUserProgress, Question } from '@/app/data/exam-data';
 import { supabase } from '@/app/services/supabase';
-import { loadPracticeState, loadAssessmentState } from '@/app/services/practiceStateStorage';
+import {
+  loadPracticeState,
+  loadAssessmentState,
+  clearPracticeState,
+  clearAssessmentState,
+} from '@/app/services/practiceStateStorage';
 import type { TutorActiveMcq } from '@/app/utils/tutorOfficialContext';
 import type { MistakesTestCombinedAnalyticsPayload } from '@/app/utils/buildMistakesTestCombinedAnalytics';
 
@@ -24,18 +29,6 @@ interface AppContextType {
   addChatMessage: (role: 'user' | 'ai', content: string) => void;
   mistakesList: Array<{ question: Question; userAnswer: number; count: number }>;
   addMistake: (question: Question, userAnswer: number) => void;
-  /** Current-test mistakes only: used for "Review Mistakes" → practice only these questions */
-  reviewMistakesQuestions: Question[] | null;
-  setReviewMistakesQuestions: (q: Question[] | null) => void;
-  /** When true, PracticeTest builds queue from DB wrong questions + GPT (AI Assessment flow) */
-  startPracticeWithWeakAreas: boolean;
-  setStartPracticeWithWeakAreas: (v: boolean) => void;
-  /** Restored from sessionStorage so user can continue test after reload/tab switch (full questions = GPT survives) */
-  restoredPracticeState: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; questionIds?: string[]; currentIndex: number } | null;
-  setRestoredPracticeState: (v: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; questionIds?: string[]; currentIndex: number } | null) => void;
-  /** Restored assessment (full questions) so tab switch doesn't lose assessment test */
-  restoredAssessmentState: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; currentIndex: number } | null;
-  setRestoredAssessmentState: (v: { questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; currentIndex: number } | null) => void;
   /** Last test session stats for Results page (dynamic charts) */
   lastSessionResults: {
     total: number;
@@ -43,7 +36,7 @@ interface AppContextType {
     incorrect: number;
     byDifficulty: Record<string, { correct: number; total: number }>;
     byCategory: Record<string, { correct: number; total: number }>;
-    /** Bank question IDs missed on first try (practice) — same list drives weak-area practice from Results */
+    /** Bank question IDs missed on first try (legacy practice test; optional on other flows) */
     weakBankQuestionIds?: string[];
     /** Stage 1 topic assessment (35 Q) — when set, Results shows full topic report */
     stageOneAssessment?: {
@@ -143,29 +136,36 @@ interface AppContextType {
      * for a single combined Results overview.
      */
     mistakesTestCombinedAnalytics?: MistakesTestCombinedAnalyticsPayload;
+    /** Full mock (queue-built): slot-final %, retry stats, per-topic CRITICAL gate (≥90% still fails if any topic CRITICAL). */
+    mockTestAssessment?: {
+      totalSlots: number;
+      correctSlotsFinal: number;
+      skippedSlots: number;
+      percentFinal: number;
+      /** First-try correct ÷ total slots × 100 */
+      firstTryPercent: number;
+      passThresholdPercent: number;
+      firstTryCorrectCount: number;
+      retryUsedCount: number;
+      retryCorrectCount: number;
+      retryWrongCount: number;
+      hasCriticalBand: boolean;
+      isPass: boolean;
+      /** When not passed: score vs CRITICAL topic rule */
+      failReason: null | 'below_threshold' | 'critical_topic' | 'both';
+      narrative: string;
+    };
   } | null;
   setLastSessionResults: (v: AppContextType['lastSessionResults']) => void;
-  /**
-   * Set when opening weak practice from Results (weak bank IDs from that session).
-   * null = opened from Dashboard / use historical DB wrongs.
-   */
-  pendingWeakPracticeBankIds: string[] | null;
-  setPendingWeakPracticeBankIds: (v: string[] | null) => void;
   /** Which test flow opened the subject picker. */
-  subjectSelectFor: 'practice' | 'mock' | 'assessment';
-  setSubjectSelectFor: (v: 'practice' | 'mock' | 'assessment') => void;
-  /** Chosen topic for Practice Test (first 25 from sheet for that subject). */
-  selectedPracticeSubject: string | null;
-  setSelectedPracticeSubject: (v: string | null) => void;
+  subjectSelectFor: 'mock' | 'assessment';
+  setSubjectSelectFor: (v: 'mock' | 'assessment') => void;
   /** Chosen topic for Mock Test (all questions for that subject). */
   selectedMockSubject: string | null;
   setSelectedMockSubject: (v: string | null) => void;
   /** Stage 1 assessment topic (`SUBJECTS[].key`). */
   selectedAssessmentTopic: string | null;
   setSelectedAssessmentTopic: (v: string | null) => void;
-  /** Subjects whose practice test has been fully completed this session. */
-  completedPracticeSubjects: string[];
-  markPracticeSubjectDone: (subject: string) => void;
   /** MCQ currently on screen (practice/mock) — AI tutor must match this key. */
   activeTutorMcq: TutorActiveMcq | null;
   setActiveTutorMcq: (v: TutorActiveMcq | null) => void;
@@ -183,23 +183,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'ai'; content: string; timestamp: Date }>>([]);
   const [mistakesList, setMistakesList] = useState<Array<{ question: Question; userAnswer: number; count: number }>>([]);
-  const [reviewMistakesQuestions, setReviewMistakesQuestions] = useState<Question[] | null>(null);
-  const [startPracticeWithWeakAreas, setStartPracticeWithWeakAreas] = useState(false);
-  const [restoredPracticeState, setRestoredPracticeState] = useState<{ questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; questionIds?: string[]; currentIndex: number } | null>(null);
-  const [restoredAssessmentState, setRestoredAssessmentState] = useState<{ questions: Array<{ id: string; question: string; options: string[]; correctAnswer: number; explanation: string; whyWrong: Record<number, string>; subject: string; category: string; difficulty: string }>; currentIndex: number } | null>(null);
   const [lastSessionResults, setLastSessionResults] = useState<AppContextType['lastSessionResults']>(null);
-  const [pendingWeakPracticeBankIds, setPendingWeakPracticeBankIds] = useState<string[] | null>(null);
-  const [subjectSelectFor, setSubjectSelectFor] = useState<'practice' | 'mock' | 'assessment'>('practice');
-  const [selectedPracticeSubject, setSelectedPracticeSubject] = useState<string | null>(null);
+  const [subjectSelectFor, setSubjectSelectFor] = useState<'mock' | 'assessment'>('assessment');
   const [selectedMockSubject, setSelectedMockSubject] = useState<string | null>(null);
   const [selectedAssessmentTopic, setSelectedAssessmentTopic] = useState<string | null>(null);
-  const [completedPracticeSubjects, setCompletedPracticeSubjects] = useState<string[]>([]);
-
-  const markPracticeSubjectDone = (subject: string) => {
-    setCompletedPracticeSubjects((prev) =>
-      prev.includes(subject) ? prev : [...prev, subject]
-    );
-  };
 
   const [activeTutorMcq, setActiveTutorMcq] = useState<TutorActiveMcq | null>(null);
 
@@ -217,18 +204,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const assessmentSaved = loadAssessmentState();
         const practiceSaved = loadPracticeState();
         if (assessmentSaved && assessmentSaved.questions.length > 0) {
-          setRestoredAssessmentState({ questions: assessmentSaved.questions, currentIndex: assessmentSaved.currentIndex });
-          setCurrentScreen('practice');
-        } else if (practiceSaved && (practiceSaved.questions.length > 0 || (practiceSaved.questionIds && practiceSaved.questionIds.length > 0))) {
-          setRestoredPracticeState({
-            questions: practiceSaved.questions || [],
-            questionIds: practiceSaved.questionIds,
-            currentIndex: practiceSaved.currentIndex,
-          });
-          setCurrentScreen('practice');
-        } else {
-          setCurrentScreen('dashboard');
+          clearAssessmentState();
         }
+        if (
+          practiceSaved &&
+          (practiceSaved.questions.length > 0 ||
+            (practiceSaved.questionIds && practiceSaved.questionIds.length > 0))
+        ) {
+          clearPracticeState();
+        }
+        setCurrentScreen('dashboard');
       }
     });
 
@@ -245,18 +230,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const assessmentSaved = loadAssessmentState();
         const practiceSaved = loadPracticeState();
         if (assessmentSaved && assessmentSaved.questions.length > 0) {
-          setRestoredAssessmentState({ questions: assessmentSaved.questions, currentIndex: assessmentSaved.currentIndex });
-          setCurrentScreen('practice');
-        } else if (practiceSaved && (practiceSaved.questions.length > 0 || (practiceSaved.questionIds && practiceSaved.questionIds.length > 0))) {
-          setRestoredPracticeState({
-            questions: practiceSaved.questions || [],
-            questionIds: practiceSaved.questionIds,
-            currentIndex: practiceSaved.currentIndex,
-          });
-          setCurrentScreen('practice');
-        } else {
-          setCurrentScreen('dashboard');
+          clearAssessmentState();
         }
+        if (
+          practiceSaved &&
+          (practiceSaved.questions.length > 0 ||
+            (practiceSaved.questionIds && practiceSaved.questionIds.length > 0))
+        ) {
+          clearPracticeState();
+        }
+        setCurrentScreen('dashboard');
       } else {
         setUserName('');
         setIsAuthenticated(false);
@@ -271,7 +254,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUserProgress(prev => {
       const newProgress = { ...prev, ...updates };
       
-      // Exam readiness: after 5+ questions, readiness = accuracy (so 80% accuracy unlocks Mock Test)
+      // Exam readiness: after 5+ questions, readiness = accuracy (used for rank/progress visuals)
       const questionsCompleted = newProgress.totalQuestions;
       const accuracy = newProgress.accuracy;
       const readiness = questionsCompleted >= 5
@@ -353,28 +336,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addChatMessage,
         mistakesList,
         addMistake,
-        reviewMistakesQuestions,
-        setReviewMistakesQuestions,
-        startPracticeWithWeakAreas,
-        setStartPracticeWithWeakAreas,
-        restoredPracticeState,
-        setRestoredPracticeState,
-        restoredAssessmentState,
-        setRestoredAssessmentState,
         lastSessionResults,
         setLastSessionResults,
-        pendingWeakPracticeBankIds,
-        setPendingWeakPracticeBankIds,
         subjectSelectFor,
         setSubjectSelectFor,
-        selectedPracticeSubject,
-        setSelectedPracticeSubject,
         selectedMockSubject,
         setSelectedMockSubject,
         selectedAssessmentTopic,
         setSelectedAssessmentTopic,
-        completedPracticeSubjects,
-        markPracticeSubjectDone,
         activeTutorMcq,
         setActiveTutorMcq,
       }}

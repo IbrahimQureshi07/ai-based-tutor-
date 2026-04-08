@@ -59,3 +59,50 @@ export async function aggregateResultsByLevelBand(
 
   return { byDifficulty, byCategory, correct, total };
 }
+
+export type MockSlotFinalOutcome = 'correct' | 'wrong' | 'skipped';
+
+/**
+ * Mock test: every bank slot counts toward totals; outcome is slot-final (after optional retry).
+ */
+export async function aggregateMockFinalByLevelBand(
+  bankQuestions: Question[],
+  getSlotOutcome: (index: number) => MockSlotFinalOutcome
+): Promise<SessionAggregate> {
+  const byDifficulty: Record<string, { correct: number; total: number }> = {};
+  const byCategory: Record<string, { correct: number; total: number }> = {};
+  let correct = 0;
+  const total = bankQuestions.length;
+
+  const levelMap = await fetchLevelsByQuestionIds(
+    bankQuestions.map((q) => q.id).filter((id) => !isEphemeralQuestionId(id))
+  );
+
+  for (let i = 0; i < bankQuestions.length; i++) {
+    const question = bankQuestions[i];
+    const outcome = getSlotOutcome(i);
+
+    let band: LevelBandSlug;
+    if (isEphemeralQuestionId(question.id)) {
+      band = await getOrClassifyLevelBand(question);
+    } else {
+      band = normalizeLevelBandSlug(
+        levelMap.get(question.id) ?? fallbackBandFromLegacyDifficulty(question.difficulty)
+      );
+    }
+
+    if (!byDifficulty[band]) byDifficulty[band] = { correct: 0, total: 0 };
+    byDifficulty[band].total += 1;
+    if (outcome === 'correct') {
+      correct++;
+      byDifficulty[band].correct += 1;
+    }
+
+    const cat = question.category || question.subject || 'General';
+    if (!byCategory[cat]) byCategory[cat] = { correct: 0, total: 0 };
+    byCategory[cat].total += 1;
+    if (outcome === 'correct') byCategory[cat].correct += 1;
+  }
+
+  return { byDifficulty, byCategory, correct, total };
+}
