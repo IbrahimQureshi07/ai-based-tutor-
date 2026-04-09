@@ -8,7 +8,7 @@ import { useQuestions } from '@/app/hooks/useQuestions';
 import type { Question } from '@/app/data/exam-data';
 import { LevelBandPill } from '@/app/components/LevelBandPill';
 import { isEphemeralQuestionId } from '@/app/constants/levelBands';
-import { getCurrentUserId, saveWrongQuestion } from '@/app/services/userWrongQuestions';
+import { getCurrentUserEmail, getCurrentUserId, saveWrongQuestion } from '@/app/services/userWrongQuestions';
 import { getOrClassifyLevelBand } from '@/app/services/questionLevels';
 import { aggregateMockFinalByLevelBand } from '@/app/utils/buildSessionResultsByLevelBand';
 import {
@@ -18,7 +18,8 @@ import {
   upsertMockTestQuestionOutcome,
   type MockAllocationBucket,
 } from '@/app/services/mockTest';
-import { buildMockTestQueue, MOCK_TOTAL_QUESTIONS } from '@/app/utils/buildMockTestQueue';
+import { buildMockTestQueue, MOCK_ADMIN_TOTAL_QUESTIONS, MOCK_TOTAL_QUESTIONS } from '@/app/utils/buildMockTestQueue';
+import { isAdminEmail } from '@/app/utils/adminEmails';
 import { generateSimilarQuestion } from '@/app/services/aiService';
 import { mockTopicRollupsAndCritical, buildAssessmentNarrative } from '@/app/utils/assessmentScoring';
 import { Clock, Flag, AlertTriangle, CheckCircle2, RotateCcw, ClipboardList } from 'lucide-react';
@@ -136,6 +137,7 @@ export function MockTest() {
   const [retryHint, setRetryHint] = useState<string | null>(null);
   const [firstPhaseHint, setFirstPhaseHint] = useState<string | null>(null);
   const [slotsVersion, setSlotsVersion] = useState(0);
+  const [mockSlotTarget, setMockSlotTarget] = useState(MOCK_TOTAL_QUESTIONS);
 
   const attemptIdRef = useRef<string | null>(null);
   const creatingAttemptRef = useRef(false);
@@ -159,6 +161,11 @@ export function MockTest() {
   allocationBucketsRef.current = allocationBuckets;
 
   const submitTestRef = useRef<() => void>(() => {});
+  /** Set when the queue is built; used so attempt snapshot matches planned admin vs full mock. */
+  const mockPlanRef = useRef<{ total: number; adminShort: boolean }>({
+    total: MOCK_TOTAL_QUESTIONS,
+    adminShort: false,
+  });
 
   const timerMinutesTotal = Math.floor(MOCK_TIME_LIMIT_SECONDS / 60);
 
@@ -490,8 +497,13 @@ export function MockTest() {
         if (!cancelled) setLoadingQueue(false);
         return;
       }
+      const email = await getCurrentUserEmail();
+      const adminShort = isAdminEmail(email);
+      const totalSlots = adminShort ? MOCK_ADMIN_TOTAL_QUESTIONS : MOCK_TOTAL_QUESTIONS;
+      mockPlanRef.current = { total: totalSlots, adminShort };
+      if (!cancelled) setMockSlotTarget(totalSlots);
       try {
-        const built = await buildMockTestQueue(questions, uid);
+        const built = await buildMockTestQueue(questions, uid, { totalQuestions: totalSlots });
         if (!cancelled) {
           setTestQuestions(built.questions);
           setAllocationBuckets(built.slots.map((s) => s.allocationBucket));
@@ -526,6 +538,8 @@ export function MockTest() {
         buildSnapshot: {
           selectedMockSubject,
           phase: 'phase6_persist',
+          adminShortMock: mockPlanRef.current.adminShort,
+          mockQuestionCount: testQuestions.length,
         },
       });
       attemptIdRef.current = attemptId;
@@ -776,7 +790,7 @@ export function MockTest() {
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
           <p className="text-muted-foreground">
-            Building mock exam ({MOCK_TOTAL_QUESTIONS} questions, {timerMinutesTotal} min timer)…
+            Building mock exam ({mockSlotTarget} questions, {timerMinutesTotal} min timer)…
           </p>
         </div>
       </div>

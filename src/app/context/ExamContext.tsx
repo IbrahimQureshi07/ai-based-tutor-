@@ -155,6 +155,25 @@ interface AppContextType {
       failReason: null | 'below_threshold' | 'critical_topic' | 'both';
       narrative: string;
     };
+    /** Final exam (110 Q or admin 15): no retry; grade A+ / A / B / Fail; pass ≥ threshold. */
+    finalExamAssessment?: {
+      totalSlots: number;
+      correctCount: number;
+      wrongCount: number;
+      unansweredCount: number;
+      percentFinal: number;
+      grade: 'A+' | 'A' | 'B' | 'Fail';
+      isPass: boolean;
+      passThresholdPercent: number;
+      /** Per catalog subject (SUBJECTS): Good ≥75% · Average 50–74% · Weak &lt;50% */
+      subjectRows: Array<{
+        label: string;
+        correct: number;
+        total: number;
+        percent: number;
+        band: 'strong' | 'average' | 'weak';
+      }>;
+    };
   } | null;
   setLastSessionResults: (v: AppContextType['lastSessionResults']) => void;
   /** Which test flow opened the subject picker. */

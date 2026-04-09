@@ -5,7 +5,11 @@ import type { AssessmentTier } from '@/app/utils/assessmentTier';
 import { supabase } from '@/app/services/supabase';
 import type { MockAllocationBucket } from '@/app/services/mockTest';
 
+/** Full mock length for learners (same pass rules: see mockExam constants). */
 export const MOCK_TOTAL_QUESTIONS = 110;
+
+/** Short mock for admin emails only (same scoring / pass threshold as full mock). */
+export const MOCK_ADMIN_TOTAL_QUESTIONS = 10;
 
 type BucketKey = 'hard_wrong' | 'easy_balanced' | 'medium_wrong' | 'weak_medium_hard';
 
@@ -126,20 +130,24 @@ async function buildMockHistory(userId: string): Promise<MockHistory> {
 
 export async function buildMockTestQueue(
   questions: Question[],
-  userId: string
+  userId: string,
+  opts?: { totalQuestions?: number }
 ): Promise<{
   questions: Question[];
   slots: MockQueueSlot[];
   tiers: AssessmentTier[];
   bucketCounts: Record<BucketKey, number>;
 }> {
+  const requested = opts?.totalQuestions ?? MOCK_TOTAL_QUESTIONS;
+  const n = Math.min(Math.max(1, requested), Math.max(1, questions.length));
+
   const history = await buildMockHistory(userId);
   const used = new Set<string>();
 
-  const hardTarget = Math.round(MOCK_TOTAL_QUESTIONS * 0.2); // 22
-  const easyTarget = Math.round(MOCK_TOTAL_QUESTIONS * 0.3); // 33
-  const mediumWrongTarget = Math.round(MOCK_TOTAL_QUESTIONS * 0.1); // 11
-  const weakTarget = MOCK_TOTAL_QUESTIONS - hardTarget - easyTarget - mediumWrongTarget; // 44
+  const hardTarget = Math.round(n * 0.2);
+  const easyTarget = Math.round(n * 0.3);
+  const mediumWrongTarget = Math.round(n * 0.1);
+  const weakTarget = n - hardTarget - easyTarget - mediumWrongTarget;
 
   const hardPool = questions.filter((q) => history.hardWrongIds.has(q.id));
   const mediumWrongPool = questions.filter((q) => history.mediumWrongIds.has(q.id));
@@ -192,12 +200,12 @@ export async function buildMockTestQueue(
   }
   slotRows.push(...wrapSlots(weakPicked, 'weak_ai'));
 
-  if (slotRows.length < MOCK_TOTAL_QUESTIONS) {
-    const filler = pickNUnique(questions, MOCK_TOTAL_QUESTIONS - slotRows.length, used);
+  if (slotRows.length < n) {
+    const filler = pickNUnique(questions, n - slotRows.length, used);
     slotRows.push(...wrapSlots(filler, 'fallback'));
   }
 
-  const finalSlots = shuffle(slotRows).slice(0, MOCK_TOTAL_QUESTIONS);
+  const finalSlots = shuffle(slotRows).slice(0, n);
   const finalQ = finalSlots.map((s) => s.question);
   const tiers = finalSlots.map((s) => s.tier);
 

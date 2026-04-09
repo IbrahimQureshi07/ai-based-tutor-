@@ -37,6 +37,11 @@ export async function getCurrentUserId(): Promise<string | null> {
   return user?.id ?? null;
 }
 
+export async function getCurrentUserEmail(): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user?.email ?? null;
+}
+
 /**
  * Save or update a wrong answer for the current user in Supabase.
  * Call this when user answers a question wrong (only for real sheet questions, not GPT-generated).

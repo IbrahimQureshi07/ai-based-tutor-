@@ -323,6 +323,84 @@ export function Results() {
 
         <JourneyAiReportSection />
 
+        {lastSessionResults?.finalExamAssessment && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.04 }}
+          >
+            <Card className="p-6 md:p-8 border-violet-500/30 bg-gradient-to-br from-violet-500/[0.07] to-background">
+              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">
+                    Final examination · Report card
+                  </p>
+                  <h2 className="text-xl font-bold mt-1">Final exam results</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Single attempt, no retries. Pass at ≥{lastSessionResults.finalExamAssessment.passThresholdPercent}% (Grade B
+                    minimum). Grades: A+ ≥90 · A 80–89 · B 75–79 · Fail below 75.
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Outcome</p>
+                  <p className="text-lg font-bold">
+                    {lastSessionResults.finalExamAssessment.isPass ? 'Passed' : 'Not passed'}
+                  </p>
+                  <p className="text-2xl font-bold text-primary mt-1">
+                    Grade {lastSessionResults.finalExamAssessment.grade}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Score</p>
+                  <p className="text-2xl font-bold text-primary">{lastSessionResults.finalExamAssessment.percentFinal}%</p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Correct</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.finalExamAssessment.correctCount}</p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Wrong</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.finalExamAssessment.wrongCount}</p>
+                </div>
+                <div className="rounded-xl bg-muted/50 p-3">
+                  <p className="text-xs text-muted-foreground">Unanswered</p>
+                  <p className="text-2xl font-bold">{lastSessionResults.finalExamAssessment.unansweredCount}</p>
+                </div>
+              </div>
+
+              <h3 className="text-sm font-semibold mb-3">By subject (catalog)</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Good ≥75% · Average 50–74% · Weak &lt;50% (among questions from that unit on this exam).
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {lastSessionResults.finalExamAssessment.subjectRows.map((row) => (
+                  <div
+                    key={row.label}
+                    className={`rounded-lg border p-3 text-sm ${
+                      row.band === 'strong'
+                        ? 'border-emerald-500/30 bg-emerald-500/5'
+                        : row.band === 'average'
+                          ? 'border-amber-500/30 bg-amber-500/5'
+                          : 'border-rose-500/30 bg-rose-500/5'
+                    }`}
+                  >
+                    <p className="font-medium leading-snug">{row.label}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {row.correct}/{row.total} correct · {row.percent}%
+                    </p>
+                    <p className="text-xs font-semibold mt-1 capitalize">
+                      {row.band === 'strong' ? 'Good' : row.band === 'average' ? 'Average' : 'Weak'}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </motion.div>
+        )}
+
         {lastSessionResults?.mockTestAssessment && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
