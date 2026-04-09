@@ -26,6 +26,11 @@ import {
   type AssessmentOutcomeKind,
 } from '@/app/utils/assessmentScoring';
 import { generateHint, generateSimilarQuestion } from '@/app/services/aiService';
+import {
+  loadStageOneSnapshot,
+  saveStageOneSnapshot,
+  clearStageOneSnapshot,
+} from '@/app/services/linearFlowSessionStorage';
 import { ArrowLeft, Lightbulb, ChevronRight, SkipForward } from 'lucide-react';
 
 function isSimilarId(id: string): boolean {
@@ -69,6 +74,12 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
 
   const statsRef = useRef({ cf: 0, mw: 0, hw: 0, sk: 0 });
   const tierStatRef = useRef(emptyTierBreakdown());
+  const banksRef = useRef<Question[]>([]);
+  const tiersRef = useRef<AssessmentTier[]>([]);
+  const currentIndexRef = useRef(0);
+  banksRef.current = banks;
+  tiersRef.current = tiers;
+  currentIndexRef.current = currentIndex;
 
   const topicLabel = SUBJECTS.find((s) => s.key === topicKey)?.label ?? topicKey;
 
@@ -78,6 +89,43 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
       setLoadingQueue(true);
       setQueueError(null);
       try {
+        const userIdEarly = await getCurrentUserId();
+        if (!userIdEarly) {
+          if (!cancelled) setQueueError('Sign in to run this assessment.');
+          if (!cancelled) setLoadingQueue(false);
+          return;
+        }
+
+        const snap = loadStageOneSnapshot();
+        if (
+          snap &&
+          snap.userId === userIdEarly &&
+          snap.topicKey === topicKey &&
+          snap.banks.length > 0 &&
+          !cancelled
+        ) {
+          sessionTotalRef.current = snap.sessionTotal;
+          setAdminStageOneCapApplied(snap.adminCapApplied);
+          setBanks(snap.banks);
+          setTiers(snap.tiers);
+          statsRef.current = { ...snap.stats };
+          tierStatRef.current = {
+            easy: { ...snap.tierStat.easy },
+            medium: { ...snap.tierStat.medium },
+            hard: { ...snap.tierStat.hard },
+          };
+          setCurrentIndex(snap.currentIndex);
+          setAttemptId(snap.attemptId);
+          setSimilarQ(snap.similarQ);
+          setSimilarShowReveal(snap.similarShowReveal);
+          setShowResult(snap.showResult);
+          setIsCorrect(snap.isCorrect);
+          setSelectedOption(snap.selectedOption);
+          setBankHint(snap.bankHint);
+          if (!cancelled) setLoadingQueue(false);
+          return;
+        }
+
         const { banks: b, tiers: t } = await buildStageOneAssessmentQueue(questions, topicKey);
         if (cancelled) return;
         if (b.length < STAGE_ONE_TOPIC_TOTAL) {
@@ -110,13 +158,10 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
         }
         tierStatRef.current = tb;
 
-        const userId = await getCurrentUserId();
-        if (userId) {
-          const id = await createTopicAttempt(userId, topicKey, {
-            totalQuestions: effectiveTotal,
-          });
-          if (!cancelled) setAttemptId(id);
-        }
+        const id = await createTopicAttempt(userIdEarly, topicKey, {
+          totalQuestions: effectiveTotal,
+        });
+        if (!cancelled) setAttemptId(id);
       } catch (e) {
         if (!cancelled) setQueueError(e instanceof Error ? e.message : 'Failed to build assessment');
       } finally {
@@ -147,6 +192,67 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
     });
     return () => setActiveTutorMcq(null);
   }, [currentQ, questionsLoading, questionsError, atEnd, setActiveTutorMcq]);
+
+  useEffect(() => {
+    if (banks.length === 0 || !attemptId) return;
+
+    const runSave = () => {
+      void getCurrentUserId().then((userId) => {
+        if (!userId) return;
+        const ts = tierStatRef.current;
+        saveStageOneSnapshot({
+          v: 1,
+          kind: 'stage1',
+          userId,
+          savedAt: Date.now(),
+          topicKey,
+          sessionTotal: sessionTotalRef.current,
+          banks: banksRef.current,
+          tiers: tiersRef.current,
+          currentIndex: currentIndexRef.current,
+          stats: { ...statsRef.current },
+          tierStat: {
+            easy: { ...ts.easy },
+            medium: { ...ts.medium },
+            hard: { ...ts.hard },
+          },
+          attemptId,
+          adminCapApplied: adminStageOneCapApplied,
+          shortfallNotice: null,
+          similarQ,
+          similarShowReveal,
+          showResult,
+          isCorrect,
+          selectedOption,
+          bankHint,
+        });
+      });
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') runSave();
+    };
+    window.addEventListener('beforeunload', runSave);
+    document.addEventListener('visibilitychange', onVis);
+    const iv = setInterval(runSave, 4000);
+    return () => {
+      window.removeEventListener('beforeunload', runSave);
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(iv);
+    };
+  }, [
+    banks.length,
+    attemptId,
+    topicKey,
+    currentIndex,
+    similarQ,
+    similarShowReveal,
+    showResult,
+    isCorrect,
+    selectedOption,
+    bankHint,
+    adminStageOneCapApplied,
+  ]);
 
   const hideCorrectAnswer =
     !isCorrect &&
@@ -185,6 +291,7 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
   );
 
   const finishTest = useCallback(async () => {
+    clearStageOneSnapshot();
     const { cf, mw, hw, sk } = statsRef.current;
     const T = sessionTotalRef.current;
     const raw = computeRawScorePercentForTotal(cf, T);
@@ -374,6 +481,7 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
   };
 
   const goBack = () => {
+    clearStageOneSnapshot();
     setSelectedAssessmentTopic(null);
     setSubjectSelectFor('assessment');
     setCurrentScreen('subjectSelect');
@@ -418,7 +526,14 @@ export function StageOneAssessment({ topicKey }: { topicKey: string }) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6">
         <p className="text-destructive text-center max-w-md">{queueError || questionsError}</p>
-        <Button onClick={() => setCurrentScreen('dashboard')}>Dashboard</Button>
+        <Button
+          onClick={() => {
+            clearStageOneSnapshot();
+            setCurrentScreen('dashboard');
+          }}
+        >
+          Dashboard
+        </Button>
       </div>
     );
   }

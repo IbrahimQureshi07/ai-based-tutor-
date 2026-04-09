@@ -32,6 +32,11 @@ import { buildFinalExamQueue, type FinalExamQueueSlot } from '@/app/utils/buildF
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
 import { Clock, AlertTriangle, Award, Download, Share2, ClipboardList } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
+import {
+  loadFinalExamSession,
+  saveFinalExamSession,
+  clearFinalExamSession,
+} from '@/app/services/finalExamSessionStorage';
 
 function uuidForOutcome(id: string): string | null {
   if (isEphemeralQuestionId(id)) return null;
@@ -114,6 +119,15 @@ export function FinalExam() {
   queueSlotsRef.current = queueSlots;
   answersRef.current = answers;
 
+  const timeLeftRef = useRef(timeLeft);
+  timeLeftRef.current = timeLeft;
+  const currentQuestionIndexRef = useRef(currentQuestionIndex);
+  currentQuestionIndexRef.current = currentQuestionIndex;
+  const selectedOptionRef = useRef(selectedOption);
+  selectedOptionRef.current = selectedOption;
+  const examSlotTargetRef = useRef(examSlotTarget);
+  examSlotTargetRef.current = examSlotTarget;
+
   const timerMinutesTotal = Math.floor(FINAL_EXAM_TIME_LIMIT_SECONDS / 60);
 
   useEffect(() => {
@@ -128,6 +142,22 @@ export function FinalExam() {
           setQueueError('Sign in to take the final exam.');
           setLoadingQueue(false);
         }
+        return;
+      }
+      const snap = loadFinalExamSession();
+      if (snap && snap.userId === uid && snap.testQuestions.length > 0 && !snap.testCompleted) {
+        examPlanRef.current = snap.examPlan;
+        if (!cancelled) setExamSlotTarget(snap.examSlotTarget);
+        if (!cancelled) setTestQuestions(snap.testQuestions);
+        if (!cancelled) setQueueSlots(snap.queueSlots);
+        if (!cancelled) setCurrentQuestionIndex(snap.currentQuestionIndex);
+        if (!cancelled) setTimeLeft(snap.timeLeft);
+        if (!cancelled) setTestStarted(snap.testStarted);
+        if (!cancelled) setTestCompleted(false);
+        if (!cancelled) setAnswers(new Map(snap.answers));
+        attemptIdRef.current = snap.attemptId;
+        if (!cancelled) setSelectedOption(snap.selectedOption);
+        if (!cancelled) setLoadingQueue(false);
         return;
       }
       const email = await getCurrentUserEmail();
@@ -160,6 +190,44 @@ export function FinalExam() {
       cancelled = true;
     };
   }, [questionsLoading, questionsError, bankQuestions, testQuestions.length]);
+
+  useEffect(() => {
+    if (!testStarted || testCompleted || testQuestions.length === 0) return;
+
+    const runSave = () => {
+      void getCurrentUserId().then((userId) => {
+        if (!userId) return;
+        saveFinalExamSession({
+          v: 1,
+          userId,
+          savedAt: Date.now(),
+          testQuestions: testQuestionsRef.current,
+          queueSlots: queueSlotsRef.current,
+          examPlan: { ...examPlanRef.current },
+          examSlotTarget: examSlotTargetRef.current,
+          currentQuestionIndex: currentQuestionIndexRef.current,
+          timeLeft: timeLeftRef.current,
+          testStarted: true,
+          testCompleted: false,
+          answers: [...answersRef.current.entries()],
+          attemptId: attemptIdRef.current,
+          selectedOption: selectedOptionRef.current,
+        });
+      });
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') runSave();
+    };
+    window.addEventListener('beforeunload', runSave);
+    document.addEventListener('visibilitychange', onVis);
+    const id = setInterval(runSave, 4000);
+    return () => {
+      window.removeEventListener('beforeunload', runSave);
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(id);
+    };
+  }, [testStarted, testCompleted, testQuestions.length]);
 
   useEffect(() => {
     if (!testStarted && !questionsLoading && !loadingQueue && testQuestions.length > 0) {
@@ -292,6 +360,7 @@ export function FinalExam() {
     const tq = testQuestionsRef.current;
     const slots = queueSlotsRef.current;
     if (tq.length === 0) return;
+    clearFinalExamSession();
     submittingRef.current = true;
     setTestCompleted(true);
 
@@ -434,6 +503,7 @@ export function FinalExam() {
 
   const handleExit = () => setShowExitDialog(true);
   const confirmExit = () => {
+    clearFinalExamSession();
     if (attemptIdRef.current) void abandonFinalExamAttempt(attemptIdRef.current);
     setCurrentScreen('dashboard');
   };
@@ -457,7 +527,14 @@ export function FinalExam() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center max-w-md p-6">
           <p className="text-destructive mb-4">{questionsError || queueError}</p>
-          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+          <Button
+            onClick={() => {
+              clearFinalExamSession();
+              setCurrentScreen('dashboard');
+            }}
+          >
+            Back to Dashboard
+          </Button>
         </div>
       </div>
     );
@@ -467,7 +544,14 @@ export function FinalExam() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center max-w-md p-6">
           <p className="text-muted-foreground mb-4">No questions available for the final exam queue.</p>
-          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+          <Button
+            onClick={() => {
+              clearFinalExamSession();
+              setCurrentScreen('dashboard');
+            }}
+          >
+            Back to Dashboard
+          </Button>
         </div>
       </div>
     );

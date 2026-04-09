@@ -40,6 +40,11 @@ import { MISTAKES_TEST_TOTAL } from '@/app/utils/mistakesTestConstants';
 /** Admins get a short run for QA; learners unchanged. */
 const MISTAKES_TEST_ADMIN_QUESTION_CAP = 10;
 import { buildMistakesTestCombinedAnalytics } from '@/app/utils/buildMistakesTestCombinedAnalytics';
+import {
+  loadMistakesSnapshot,
+  saveMistakesSnapshot,
+  clearMistakesSnapshot,
+} from '@/app/services/linearFlowSessionStorage';
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
 import { generateHint, generateSimilarQuestion } from '@/app/services/aiService';
 import { ArrowLeft, Lightbulb, ChevronRight, SkipForward } from 'lucide-react';
@@ -95,15 +100,19 @@ export function MistakesTest() {
   const tierStatRef = useRef(emptyTierBreakdown());
   const totalSlotsRef = useRef(0);
   const banksRef = useRef<Question[]>([]);
+  const tiersRef = useRef<AssessmentTier[]>([]);
   const perTopicRef = useRef<Record<string, PerTopicSt>>({});
   const sourcesRef = useRef<MistakesTestQueueSource[]>([]);
   const unresolvedHardIdsRef = useRef<string[]>([]);
   const userIdRef = useRef<string | null>(null);
+  const currentIndexRef = useRef(0);
+  currentIndexRef.current = currentIndex;
 
   useEffect(() => {
     totalSlotsRef.current = banks.length;
     banksRef.current = banks;
-  }, [banks]);
+    tiersRef.current = tiers;
+  }, [banks, tiers]);
 
   useEffect(() => {
     if (questionsLoading) {
@@ -139,6 +148,34 @@ export function MistakesTest() {
           if (!cancelled) {
             setQueueError('Complete Stage 2 preparation at least once to unlock the mistakes test.');
           }
+          return;
+        }
+
+        const snap = loadMistakesSnapshot();
+        if (snap && snap.userId === userId && snap.banks.length > 0 && !cancelled) {
+          userIdRef.current = userId;
+          setAdminMistakesCapApplied(snap.adminCapApplied);
+          setBanks(snap.banks);
+          setTiers(snap.tiers);
+          sourcesRef.current = [...snap.sources];
+          statsRef.current = { ...snap.stats };
+          tierStatRef.current = {
+            easy: { ...snap.tierStat.easy },
+            medium: { ...snap.tierStat.medium },
+            hard: { ...snap.tierStat.hard },
+          };
+          perTopicRef.current = { ...snap.perTopic };
+          unresolvedHardIdsRef.current = [...snap.unresolvedHardIds];
+          setCurrentIndex(snap.currentIndex);
+          setAttemptId(snap.attemptId);
+          setSimilarQ(snap.similarQ);
+          setSimilarShowReveal(snap.similarShowReveal);
+          setShowResult(snap.showResult);
+          setIsCorrect(snap.isCorrect);
+          setSelectedOption(snap.selectedOption);
+          setBankHint(snap.bankHint);
+          setShortfallNotice(snap.shortfallNotice);
+          if (!cancelled) setLoadingQueue(false);
           return;
         }
 
@@ -232,6 +269,68 @@ export function MistakesTest() {
     return () => setActiveTutorMcq(null);
   }, [currentQ, questionsLoading, questionsError, atEnd, setActiveTutorMcq]);
 
+  useEffect(() => {
+    if (banks.length === 0 || !attemptId) return;
+
+    const runSave = () => {
+      void getCurrentUserId().then((uid) => {
+        if (!uid) return;
+        const ts = tierStatRef.current;
+        saveMistakesSnapshot({
+          v: 1,
+          kind: 'mistakes',
+          userId: uid,
+          savedAt: Date.now(),
+          banks: banksRef.current,
+          tiers: tiersRef.current,
+          currentIndex: currentIndexRef.current,
+          stats: { ...statsRef.current },
+          tierStat: {
+            easy: { ...ts.easy },
+            medium: { ...ts.medium },
+            hard: { ...ts.hard },
+          },
+          attemptId,
+          adminCapApplied: adminMistakesCapApplied,
+          shortfallNotice,
+          similarQ,
+          similarShowReveal,
+          showResult,
+          isCorrect,
+          selectedOption,
+          bankHint,
+          sources: [...sourcesRef.current],
+          unresolvedHardIds: [...unresolvedHardIdsRef.current],
+          perTopic: { ...perTopicRef.current },
+        });
+      });
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') runSave();
+    };
+    window.addEventListener('beforeunload', runSave);
+    document.addEventListener('visibilitychange', onVis);
+    const iv = setInterval(runSave, 4000);
+    return () => {
+      window.removeEventListener('beforeunload', runSave);
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(iv);
+    };
+  }, [
+    banks.length,
+    attemptId,
+    currentIndex,
+    similarQ,
+    similarShowReveal,
+    showResult,
+    isCorrect,
+    selectedOption,
+    bankHint,
+    adminMistakesCapApplied,
+    shortfallNotice,
+  ]);
+
   const hideCorrectAnswer =
     !isCorrect &&
     !similarShowReveal &&
@@ -281,6 +380,7 @@ export function MistakesTest() {
   );
 
   const finishTest = useCallback(async () => {
+    clearMistakesSnapshot();
     const { cf, mw, hw, sk } = statsRef.current;
     const T = totalSlotsRef.current || totalSlots;
     const raw = computeRawScorePercentForTotal(cf, T);
@@ -512,6 +612,7 @@ export function MistakesTest() {
   };
 
   const goBack = () => {
+    clearMistakesSnapshot();
     setCurrentScreen('dashboard');
   };
 
@@ -554,7 +655,14 @@ export function MistakesTest() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6">
         <p className="text-destructive text-center max-w-md">{queueError || questionsError}</p>
-        <Button onClick={() => setCurrentScreen('dashboard')}>Dashboard</Button>
+        <Button
+          onClick={() => {
+            clearMistakesSnapshot();
+            setCurrentScreen('dashboard');
+          }}
+        >
+          Dashboard
+        </Button>
       </div>
     );
   }

@@ -24,22 +24,17 @@ import { generateSimilarQuestion } from '@/app/services/aiService';
 import { mockTopicRollupsAndCritical, buildAssessmentNarrative } from '@/app/utils/assessmentScoring';
 import { Clock, Flag, AlertTriangle, CheckCircle2, RotateCcw, ClipboardList } from 'lucide-react';
 import { MOCK_PASS_THRESHOLD_PERCENT, MOCK_TIME_LIMIT_SECONDS } from '@/app/constants/mockExam';
+import {
+  loadMockSession,
+  saveMockSession,
+  clearMockSession,
+  slotResultsFromSnapshot,
+  type MockSlotResultPersisted,
+} from '@/app/services/mockTestSessionStorage';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 import type { AssessmentTier } from '@/app/utils/assessmentTier';
 
-type SlotResult = {
-  firstSelected: number | null;
-  firstTryCorrect: boolean;
-  firstSkipped: boolean;
-  retryOffered: boolean;
-  retryQuestionId: string | null;
-  retryQuestionText: string | null;
-  retrySelected: number | null;
-  retryCorrect: boolean | null;
-  retrySkipped: boolean;
-  finalCorrect: boolean;
-  finalSkipped: boolean;
-};
+type SlotResult = MockSlotResultPersisted;
 
 function tierFromQuestion(q: Question): AssessmentTier {
   const d = String(q.difficulty || 'medium').toLowerCase();
@@ -126,6 +121,8 @@ export function MockTest() {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
+  const flaggedQuestionsRef = useRef(flaggedQuestions);
+  flaggedQuestionsRef.current = flaggedQuestions;
   const [timeLeft, setTimeLeft] = useState(MOCK_TIME_LIMIT_SECONDS);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [testCompleted, setTestCompleted] = useState(false);
@@ -159,6 +156,13 @@ export function MockTest() {
   selectedOptionRef.current = selectedOption;
   testQuestionsRef.current = testQuestions;
   allocationBucketsRef.current = allocationBuckets;
+
+  const timeLeftRef = useRef(timeLeft);
+  timeLeftRef.current = timeLeft;
+  const selectedMockSubjectRef = useRef(selectedMockSubject);
+  selectedMockSubjectRef.current = selectedMockSubject;
+  const mockSlotTargetRef = useRef(mockSlotTarget);
+  mockSlotTargetRef.current = mockSlotTarget;
 
   const submitTestRef = useRef<() => void>(() => {});
   /** Set when the queue is built; used so attempt snapshot matches planned admin vs full mock. */
@@ -296,6 +300,7 @@ export function MockTest() {
 
   const submitTest = useCallback(() => {
     if (submittingRef.current) return;
+    clearMockSession();
     submittingRef.current = true;
     setTestCompleted(true);
 
@@ -497,6 +502,34 @@ export function MockTest() {
         if (!cancelled) setLoadingQueue(false);
         return;
       }
+      const snap = loadMockSession();
+      if (
+        snap &&
+        snap.userId === uid &&
+        snap.selectedMockSubject === selectedMockSubject &&
+        snap.testQuestions.length > 0 &&
+        !snap.testCompleted
+      ) {
+        mockPlanRef.current = snap.mockPlan;
+        if (!cancelled) setMockSlotTarget(snap.mockSlotTarget);
+        if (!cancelled) setTestQuestions(snap.testQuestions);
+        if (!cancelled) setAllocationBuckets(snap.allocationBuckets);
+        slotResultsRef.current = slotResultsFromSnapshot(snap.slotResults) as Record<number, SlotResult>;
+        uncommittedFirstTryRef.current = new Map(snap.uncommittedFirstTry);
+        if (!cancelled) setFlaggedQuestions(new Set(snap.flagged));
+        if (!cancelled) setCurrentQuestionIndex(snap.currentQuestionIndex);
+        if (!cancelled) setTimeLeft(snap.timeLeft);
+        if (!cancelled) setTestStarted(snap.testStarted);
+        if (!cancelled) setTestCompleted(false);
+        if (!cancelled) setInRetry(snap.inRetry);
+        if (!cancelled) setRetryQuestion(snap.retryQuestion);
+        firstWrongSelectionRef.current = snap.firstWrongSelection;
+        attemptIdRef.current = snap.attemptId;
+        if (!cancelled) setSelectedOption(snap.selectedOption);
+        if (!cancelled) setSlotsVersion((v) => v + 1);
+        if (!cancelled) setLoadingQueue(false);
+        return;
+      }
       const email = await getCurrentUserEmail();
       const adminShort = isAdminEmail(email);
       const totalSlots = adminShort ? MOCK_ADMIN_TOTAL_QUESTIONS : MOCK_TOTAL_QUESTIONS;
@@ -517,7 +550,55 @@ export function MockTest() {
     return () => {
       cancelled = true;
     };
-  }, [questions, questionsLoading, questionsError, testQuestions.length]);
+  }, [questions, questionsLoading, questionsError, testQuestions.length, selectedMockSubject]);
+
+  useEffect(() => {
+    if (!testStarted || testCompleted || testQuestions.length === 0) return;
+
+    const runSave = () => {
+      void getCurrentUserId().then((userId) => {
+        if (!userId) return;
+        const sr: Record<string, MockSlotResultPersisted> = {};
+        for (const [k, v] of Object.entries(slotResultsRef.current)) {
+          sr[String(k)] = v;
+        }
+        saveMockSession({
+          v: 1,
+          userId,
+          savedAt: Date.now(),
+          selectedMockSubject: selectedMockSubjectRef.current,
+          testQuestions: testQuestionsRef.current,
+          allocationBuckets: allocationBucketsRef.current,
+          mockPlan: { ...mockPlanRef.current },
+          mockSlotTarget: mockSlotTargetRef.current,
+          currentQuestionIndex: currentQuestionIndexRef.current,
+          timeLeft: timeLeftRef.current,
+          testStarted: true,
+          testCompleted: false,
+          slotResults: sr,
+          uncommittedFirstTry: [...uncommittedFirstTryRef.current.entries()],
+          flagged: [...flaggedQuestionsRef.current],
+          inRetry: inRetryRef.current,
+          retryQuestion: retryQuestionRef.current,
+          firstWrongSelection: firstWrongSelectionRef.current,
+          attemptId: attemptIdRef.current,
+          selectedOption: selectedOptionRef.current,
+        });
+      });
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') runSave();
+    };
+    window.addEventListener('beforeunload', runSave);
+    document.addEventListener('visibilitychange', onVis);
+    const id = setInterval(runSave, 4000);
+    return () => {
+      window.removeEventListener('beforeunload', runSave);
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(id);
+    };
+  }, [testStarted, testCompleted, testQuestions.length]);
 
   useEffect(() => {
     if (!testStarted || questionsLoading || loadingQueue || testQuestions.length === 0) return;
@@ -777,6 +858,7 @@ export function MockTest() {
   };
 
   const confirmExit = () => {
+    clearMockSession();
     if (attemptIdRef.current) {
       void abandonMockTestAttempt(attemptIdRef.current);
     }
@@ -801,7 +883,14 @@ export function MockTest() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center max-w-md p-6">
           <p className="text-destructive mb-4">{questionsError || queueError}</p>
-          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+          <Button
+            onClick={() => {
+              clearMockSession();
+              setCurrentScreen('dashboard');
+            }}
+          >
+            Back to Dashboard
+          </Button>
         </div>
       </div>
     );
@@ -811,7 +900,14 @@ export function MockTest() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
         <div className="text-center max-w-md p-6">
           <p className="text-muted-foreground mb-4">No questions available. Add questions in Supabase.</p>
-          <Button onClick={() => setCurrentScreen('dashboard')}>Back to Dashboard</Button>
+          <Button
+            onClick={() => {
+              clearMockSession();
+              setCurrentScreen('dashboard');
+            }}
+          >
+            Back to Dashboard
+          </Button>
         </div>
       </div>
     );
@@ -823,6 +919,7 @@ export function MockTest() {
           <p className="text-muted-foreground mb-4">No questions for mock queue. Please check question bank data.</p>
           <Button
             onClick={() => {
+              clearMockSession();
               setSelectedMockSubject(null);
               setSubjectSelectFor('mock');
               setCurrentScreen('subjectSelect');

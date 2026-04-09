@@ -33,6 +33,11 @@ import { PRACTICE_PREPARATION_TOTAL } from '@/app/utils/practicePreparationQuota
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
 import { generateHint, generateSimilarQuestion } from '@/app/services/aiService';
 import type { StageOneTopicRollupEntry } from '@/app/services/practiceStageTwoAggregation';
+import {
+  loadStageTwoSnapshot,
+  saveStageTwoSnapshot,
+  clearStageTwoSnapshot,
+} from '@/app/services/linearFlowSessionStorage';
 import { ArrowLeft, Lightbulb, ChevronRight, SkipForward } from 'lucide-react';
 
 /** Admins (see `adminEmails` / VITE_ADMIN_EMAILS) get a short Stage 2 run for QA; learners unchanged. */
@@ -187,13 +192,17 @@ export function StageTwoPreparation() {
   const tierStatRef = useRef(emptyTierBreakdown());
   const totalSlotsRef = useRef(0);
   const banksRef = useRef<Question[]>([]);
+  const tiersRef = useRef<AssessmentTier[]>([]);
   const stageOneRollupRef = useRef<Record<string, StageOneTopicRollupEntry> | null>(null);
   const perTopicStageTwoRef = useRef<Record<string, PerTopicSt>>({});
+  const currentIndexRef = useRef(0);
+  currentIndexRef.current = currentIndex;
 
   useEffect(() => {
     totalSlotsRef.current = banks.length;
     banksRef.current = banks;
-  }, [banks]);
+    tiersRef.current = tiers;
+  }, [banks, tiers]);
 
   useEffect(() => {
     if (questionsLoading) {
@@ -227,6 +236,32 @@ export function StageTwoPreparation() {
               'Complete at least one Stage 1 topic assessment first. Stage 2 uses those results to weight your mix.'
             );
           }
+          return;
+        }
+
+        const snap = loadStageTwoSnapshot();
+        if (snap && snap.userId === userId && snap.banks.length > 0 && !cancelled) {
+          setAdminStageTwoCapApplied(snap.adminCapApplied);
+          setBanks(snap.banks);
+          setTiers(snap.tiers);
+          statsRef.current = { ...snap.stats };
+          tierStatRef.current = {
+            easy: { ...snap.tierStat.easy },
+            medium: { ...snap.tierStat.medium },
+            hard: { ...snap.tierStat.hard },
+          };
+          stageOneRollupRef.current = snap.stageOneRollup;
+          perTopicStageTwoRef.current = { ...snap.perTopicStageTwo };
+          setCurrentIndex(snap.currentIndex);
+          setAttemptId(snap.attemptId);
+          setSimilarQ(snap.similarQ);
+          setSimilarShowReveal(snap.similarShowReveal);
+          setShowResult(snap.showResult);
+          setIsCorrect(snap.isCorrect);
+          setSelectedOption(snap.selectedOption);
+          setBankHint(snap.bankHint);
+          setShortfallNotice(snap.shortfallNotice);
+          if (!cancelled) setLoadingQueue(false);
           return;
         }
 
@@ -317,6 +352,71 @@ export function StageTwoPreparation() {
     return () => setActiveTutorMcq(null);
   }, [currentQ, questionsLoading, questionsError, atEnd, setActiveTutorMcq]);
 
+  useEffect(() => {
+    if (banks.length === 0 || !attemptId) return;
+
+    const runSave = () => {
+      void getCurrentUserId().then((uid) => {
+        if (!uid) return;
+        const ts = tierStatRef.current;
+        const perCopy: Record<string, PerTopicSt> = {};
+        for (const [k, v] of Object.entries(perTopicStageTwoRef.current)) {
+          perCopy[k] = { ...v };
+        }
+        saveStageTwoSnapshot({
+          v: 1,
+          kind: 'stage2',
+          userId: uid,
+          savedAt: Date.now(),
+          banks: banksRef.current,
+          tiers: tiersRef.current,
+          currentIndex: currentIndexRef.current,
+          stats: { ...statsRef.current },
+          tierStat: {
+            easy: { ...ts.easy },
+            medium: { ...ts.medium },
+            hard: { ...ts.hard },
+          },
+          attemptId,
+          adminCapApplied: adminStageTwoCapApplied,
+          shortfallNotice,
+          similarQ,
+          similarShowReveal,
+          showResult,
+          isCorrect,
+          selectedOption,
+          bankHint,
+          stageOneRollup: stageOneRollupRef.current,
+          perTopicStageTwo: perCopy,
+        });
+      });
+    };
+
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') runSave();
+    };
+    window.addEventListener('beforeunload', runSave);
+    document.addEventListener('visibilitychange', onVis);
+    const iv = setInterval(runSave, 4000);
+    return () => {
+      window.removeEventListener('beforeunload', runSave);
+      document.removeEventListener('visibilitychange', onVis);
+      clearInterval(iv);
+    };
+  }, [
+    banks.length,
+    attemptId,
+    currentIndex,
+    similarQ,
+    similarShowReveal,
+    showResult,
+    isCorrect,
+    selectedOption,
+    bankHint,
+    adminStageTwoCapApplied,
+    shortfallNotice,
+  ]);
+
   const hideCorrectAnswer =
     !isCorrect &&
     !similarShowReveal &&
@@ -359,6 +459,7 @@ export function StageTwoPreparation() {
   );
 
   const finishTest = useCallback(async () => {
+    clearStageTwoSnapshot();
     const { cf, mw, hw, sk } = statsRef.current;
     const T = totalSlotsRef.current || totalSlots;
     const raw = computeRawScorePercentForTotal(cf, T);
@@ -544,6 +645,7 @@ export function StageTwoPreparation() {
   };
 
   const goBack = () => {
+    clearStageTwoSnapshot();
     setCurrentScreen('dashboard');
   };
 
@@ -586,7 +688,14 @@ export function StageTwoPreparation() {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6">
         <p className="text-destructive text-center max-w-md">{queueError || questionsError}</p>
-        <Button onClick={() => setCurrentScreen('dashboard')}>Dashboard</Button>
+        <Button
+          onClick={() => {
+            clearStageTwoSnapshot();
+            setCurrentScreen('dashboard');
+          }}
+        >
+          Dashboard
+        </Button>
       </div>
     );
   }

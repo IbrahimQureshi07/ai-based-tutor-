@@ -7,6 +7,8 @@ import {
   clearPracticeState,
   clearAssessmentState,
 } from '@/app/services/practiceStateStorage';
+import { loadNav, saveNav, isRestorableScreen } from '@/app/services/examNavigationStorage';
+import { clearAllExamClientSessions } from '@/app/services/examTabSessionClear';
 import type { TutorActiveMcq } from '@/app/utils/tutorOfficialContext';
 import type { MistakesTestCombinedAnalyticsPayload } from '@/app/utils/buildMistakesTestCombinedAnalytics';
 
@@ -194,7 +196,8 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [userProgress, setUserProgress] = useState<UserProgress>(initialUserProgress);
-  const [currentScreen, setCurrentScreen] = useState('auth');
+  /** When signed out, `AuthScreen` is shown regardless — never leave this as `'auth'` while authenticated or `App` falls through to Dashboard. */
+  const [currentScreen, setCurrentScreen] = useState('dashboard');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userName, setUserName] = useState('');
   const [answeredQuestions, setAnsweredQuestions] = useState<Map<string, { userAnswer: number; correct: boolean }>>(new Map());
@@ -212,6 +215,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark');
   }, [theme]);
+
+  // Keep last route + subject picks across tab discard / full reload (session tab only).
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    saveNav({
+      screen: currentScreen,
+      selectedMockSubject,
+      selectedAssessmentTopic,
+      subjectSelectFor,
+    });
+  }, [
+    isAuthenticated,
+    currentScreen,
+    selectedMockSubject,
+    selectedAssessmentTopic,
+    subjectSelectFor,
+  ]);
 
   // Restore Supabase session on load and listen for auth changes
   useEffect(() => {
@@ -232,37 +252,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ) {
           clearPracticeState();
         }
-        setCurrentScreen('dashboard');
+        const nav = loadNav();
+        if (nav && isRestorableScreen(nav.screen)) {
+          setCurrentScreen(nav.screen);
+          setSelectedMockSubject(nav.selectedMockSubject);
+          setSelectedAssessmentTopic(nav.selectedAssessmentTopic);
+          setSubjectSelectFor(nav.subjectSelectFor);
+        } else {
+          setCurrentScreen('dashboard');
+        }
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         const name = session.user.user_metadata?.full_name || session.user.email || '';
         setUserName(name);
         setIsAuthenticated(true);
-        // Token refresh (e.g. returning to the tab) must not reset navigation — otherwise
-        // Results and other screens jump to dashboard when practice storage was cleared.
-        if (event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
-          return;
-        }
-        const assessmentSaved = loadAssessmentState();
-        const practiceSaved = loadPracticeState();
-        if (assessmentSaved && assessmentSaved.questions.length > 0) {
-          clearAssessmentState();
-        }
-        if (
-          practiceSaved &&
-          (practiceSaved.questions.length > 0 ||
-            (practiceSaved.questionIds && practiceSaved.questionIds.length > 0))
-        ) {
-          clearPracticeState();
-        }
-        setCurrentScreen('dashboard');
+        // Do not change `currentScreen` or clear storage here. `INITIAL_SESSION` / `TOKEN_REFRESHED` /
+        // duplicate `SIGNED_IN` on tab focus would otherwise send users to Dashboard and wipe progress.
+        // Legacy practice wipe + route restore run once in `getSession().then` above; AuthScreen sets screen after password login.
       } else {
+        clearAllExamClientSessions();
         setUserName('');
         setIsAuthenticated(false);
-        setCurrentScreen('auth');
+        setCurrentScreen('dashboard');
       }
     });
 
