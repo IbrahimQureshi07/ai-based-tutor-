@@ -30,13 +30,55 @@ import { isAdminEmail } from '@/app/utils/adminEmails';
 import { aggregateMockFinalByLevelBand } from '@/app/utils/buildSessionResultsByLevelBand';
 import { buildFinalExamQueue, type FinalExamQueueSlot } from '@/app/utils/buildFinalExamQueue';
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
-import { Clock, AlertTriangle, Award, Download, Share2, ClipboardList } from 'lucide-react';
+import { Clock, AlertTriangle, Award, Download, Share2, ClipboardList, Printer } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 import {
   loadFinalExamSession,
   saveFinalExamSession,
   clearFinalExamSession,
 } from '@/app/services/finalExamSessionStorage';
+import { toast } from 'sonner';
+import {
+  downloadFinalExamReportCard,
+  printFinalExamReportCard,
+  shareFinalExamReportCard,
+} from '@/app/utils/finalExamReportCardExport';
+
+function finalCertificateTone(grade: FinalExamGrade, isPass: boolean) {
+  if (!isPass || grade === 'Fail') {
+    return {
+      iconWrapper: 'bg-gradient-to-br from-rose-600 to-red-900 ring-2 ring-rose-400/50',
+      iconClass: 'text-white',
+      titleClass: 'text-rose-800 dark:text-rose-100',
+      spring: { type: 'spring' as const, stiffness: 300, damping: 22 },
+    };
+  }
+  switch (grade) {
+    case 'A+':
+      return {
+        iconWrapper:
+          'bg-gradient-to-br from-amber-300 via-yellow-400 to-orange-500 ring-4 ring-amber-400/80 shadow-lg shadow-amber-500/30',
+        iconClass: 'text-amber-950',
+        titleClass: 'text-amber-950 dark:text-amber-50',
+        spring: { type: 'spring' as const, stiffness: 440, damping: 15 },
+      };
+    case 'A':
+      return {
+        iconWrapper: 'bg-gradient-to-br from-emerald-500 to-teal-700 ring-2 ring-emerald-400/60',
+        iconClass: 'text-white',
+        titleClass: 'text-emerald-900 dark:text-emerald-100',
+        spring: { type: 'spring' as const, stiffness: 400, damping: 18 },
+      };
+    case 'B':
+    default:
+      return {
+        iconWrapper: 'bg-gradient-to-br from-sky-500 to-indigo-600 ring-2 ring-sky-300/60',
+        iconClass: 'text-white',
+        titleClass: 'text-sky-950 dark:text-sky-100',
+        spring: { type: 'spring' as const, stiffness: 340, damping: 22 },
+      };
+  }
+}
 
 function uuidForOutcome(id: string): string | null {
   if (isEphemeralQuestionId(id)) return null;
@@ -79,6 +121,7 @@ export function FinalExam() {
     setChatOpen,
     setLastSessionResults,
     setActiveTutorMcq,
+    userName,
   } = useApp();
   const { questions: bankQuestions, loading: questionsLoading, error: questionsError } = useQuestions();
 
@@ -101,6 +144,18 @@ export function FinalExam() {
   const [finalPercent, setFinalPercent] = useState(0);
   const [finalGrade, setFinalGrade] = useState<FinalExamGrade>('Fail');
   const [finalIsPass, setFinalIsPass] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [reportSubjectRows, setReportSubjectRows] = useState<
+    ReturnType<typeof buildFinalSubjectRows>
+  >([]);
+
+  const reportCardPrintRef = useRef<HTMLDivElement | null>(null);
+  const reportCardSnapshotRef = useRef<{
+    subjectRows: ReturnType<typeof buildFinalSubjectRows>;
+    percentFinal: number;
+    grade: FinalExamGrade;
+    isPass: boolean;
+  } | null>(null);
 
   const attemptIdRef = useRef<string | null>(null);
   const creatingAttemptRef = useRef(false);
@@ -397,6 +452,13 @@ export function FinalExam() {
       }
 
       const subjectRows = buildFinalSubjectRows(tq, answersSnap);
+      reportCardSnapshotRef.current = {
+        subjectRows,
+        percentFinal: pct,
+        grade,
+        isPass,
+      };
+      setReportSubjectRows(subjectRows);
       const { byDifficulty, byCategory, correct: aggCorrect, total: aggTotal } =
         await aggregateMockFinalByLevelBand(tq, (i) => {
           const ua = answersSnap.get(i);
@@ -494,6 +556,72 @@ export function FinalExam() {
   useEffect(() => {
     submitTestRef.current = submitTest;
   }, [submitTest]);
+
+  const handleRetakeFinalExam = useCallback(() => {
+    clearFinalExamSession();
+    setShowCertificate(false);
+    reportCardSnapshotRef.current = null;
+    setReportSubjectRows([]);
+    submittingRef.current = false;
+    creatingAttemptRef.current = false;
+    attemptIdRef.current = null;
+    setTestCompleted(false);
+    setTestStarted(false);
+    setTestQuestions([]);
+    setQueueSlots([]);
+    setCurrentQuestionIndex(0);
+    setAnswers(new Map());
+    setTimeLeft(FINAL_EXAM_TIME_LIMIT_SECONDS);
+    setSelectedOption(null);
+    setShowSubmitDialog(false);
+    setNavHint(null);
+    setFinalPercent(0);
+    setFinalGrade('Fail');
+    setFinalIsPass(false);
+  }, []);
+
+  const handleDownloadReport = useCallback(async () => {
+    const el = reportCardPrintRef.current;
+    if (!el) {
+      toast.error('Report not ready');
+      return;
+    }
+    setExportBusy(true);
+    try {
+      await downloadFinalExamReportCard(el, `final-exam-report-${Math.round(finalPercent)}pct`);
+      toast.success('Download started');
+    } catch {
+      toast.error('Could not download report');
+    } finally {
+      setExportBusy(false);
+    }
+  }, [finalPercent]);
+
+  const handlePrintReport = useCallback(() => {
+    const el = reportCardPrintRef.current;
+    if (!el) {
+      toast.error('Report not ready');
+      return;
+    }
+    printFinalExamReportCard(el);
+  }, []);
+
+  const handleShareReport = useCallback(async () => {
+    const el = reportCardPrintRef.current;
+    if (!el) {
+      toast.error('Report not ready');
+      return;
+    }
+    setExportBusy(true);
+    try {
+      await shareFinalExamReportCard(el);
+      toast.success('Shared or copied');
+    } catch {
+      toast.error('Share not available');
+    } finally {
+      setExportBusy(false);
+    }
+  }, []);
 
   const handleSubmitClick = () => setShowSubmitDialog(true);
   const confirmSubmit = () => {
@@ -762,62 +890,174 @@ export function FinalExam() {
       </Dialog>
 
       <Dialog open={showCertificate} onOpenChange={() => {}}>
-        <DialogContent className="max-w-2xl">
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="text-center space-y-4"
-          >
-            <div
-              className={`inline-flex items-center justify-center w-20 h-20 rounded-full mx-auto ${
-                finalIsPass ? 'bg-gradient-to-r from-primary to-purple-500' : 'bg-destructive/20'
-              }`}
-            >
-              <Award className={`w-10 h-10 ${finalIsPass ? 'text-white' : 'text-destructive'}`} />
-            </div>
-            <h2 className="text-2xl font-bold">
-              {finalIsPass ? 'Final exam complete' : 'Final exam not passed'}
-            </h2>
-            <p className="text-muted-foreground">
-              Score {finalPercent}% · Grade <span className="font-bold text-foreground">{finalGrade}</span>
-              {finalIsPass ? ' · Pass' : ` · Need ≥${FINAL_EXAM_PASS_THRESHOLD_PERCENT}% to pass`}
-            </p>
-            <div className="rounded-xl border bg-muted/30 p-6">
-              <div className="text-5xl font-bold text-primary">{finalPercent}%</div>
-              <p className="text-sm text-muted-foreground mt-2">Final score</p>
-            </div>
-            <div className="flex flex-wrap gap-2 justify-center">
-              <Button
-                size="lg"
-                onClick={() => {
-                  setShowCertificate(false);
-                  setCurrentScreen('results');
-                }}
-              >
-                View detailed results
-              </Button>
-              {!finalIsPass && (
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={() => {
-                    setShowCertificate(false);
-                    setCurrentScreen('dashboard');
-                  }}
+        <DialogContent className="max-w-2xl overflow-x-hidden">
+          {(() => {
+            const tone = finalCertificateTone(finalGrade, finalIsPass);
+            return (
+              <>
+                <motion.div
+                  key={`${finalGrade}-${finalIsPass}`}
+                  initial={{ scale: 0.88, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={tone.spring}
+                  className="text-center space-y-4"
                 >
-                  Retake later
-                </Button>
-              )}
-              <Button variant="outline" size="lg" className="gap-2" disabled>
-                <Download className="w-4 h-4" />
-                Download
-              </Button>
-              <Button variant="outline" size="lg" className="gap-2" disabled>
-                <Share2 className="w-4 h-4" />
-                Share
-              </Button>
-            </div>
-          </motion.div>
+                  <div
+                    className={`inline-flex items-center justify-center w-24 h-24 rounded-full mx-auto ring-offset-2 ring-offset-background ${tone.iconWrapper}`}
+                  >
+                    <Award className={`w-12 h-12 ${tone.iconClass}`} />
+                  </div>
+                  <h2 className={`text-2xl font-bold ${tone.titleClass}`}>
+                    {finalIsPass ? 'Final exam complete' : 'Final exam not passed'}
+                  </h2>
+                  {finalIsPass && (
+                    <p className={`text-sm font-semibold ${tone.titleClass}`}>
+                      {finalGrade === 'A+'
+                        ? 'Outstanding performance'
+                        : finalGrade === 'A'
+                          ? 'Strong performance'
+                          : 'You passed'}
+                    </p>
+                  )}
+                  <p className="text-muted-foreground">
+                    Score {finalPercent}% · Grade <span className="font-bold text-foreground">{finalGrade}</span>
+                    {finalIsPass ? ' · Pass' : ` · Need ≥${FINAL_EXAM_PASS_THRESHOLD_PERCENT}% to pass`}
+                  </p>
+                  <div className="rounded-xl border bg-muted/30 p-6">
+                    <div
+                      className={`text-5xl font-bold ${finalIsPass ? (finalGrade === 'A+' ? 'text-amber-600 dark:text-amber-400' : finalGrade === 'A' ? 'text-emerald-600 dark:text-emerald-400' : 'text-sky-600 dark:text-sky-400') : 'text-destructive'}`}
+                    >
+                      {finalPercent}%
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-2">Final score</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    <Button
+                      size="lg"
+                      onClick={() => {
+                        setShowCertificate(false);
+                        setCurrentScreen('results');
+                      }}
+                    >
+                      View detailed results
+                    </Button>
+                    {!finalIsPass && (
+                      <>
+                        <Button size="lg" variant="default" onClick={handleRetakeFinalExam}>
+                          Retake final exam
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          onClick={() => {
+                            setShowCertificate(false);
+                            setCurrentScreen('dashboard');
+                          }}
+                        >
+                          Back to dashboard
+                        </Button>
+                      </>
+                    )}
+                    {finalIsPass && (
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        onClick={() => {
+                          setShowCertificate(false);
+                          setCurrentScreen('dashboard');
+                        }}
+                      >
+                        Dashboard
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="gap-2"
+                      disabled={exportBusy}
+                      onClick={() => void handleDownloadReport()}
+                    >
+                      <Download className="w-4 h-4" />
+                      PDF / PNG
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="gap-2"
+                      disabled={exportBusy}
+                      onClick={handlePrintReport}
+                    >
+                      <Printer className="w-4 h-4" />
+                      Print
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="gap-2"
+                      disabled={exportBusy}
+                      onClick={() => void handleShareReport()}
+                    >
+                      <Share2 className="w-4 h-4" />
+                      Share
+                    </Button>
+                  </div>
+                </motion.div>
+
+                <div
+                  ref={reportCardPrintRef}
+                  className="fixed left-[-9999px] top-0 w-[500px] bg-white text-slate-900 p-8 rounded-xl border-2 border-slate-200 shadow-sm"
+                  aria-hidden
+                >
+                  <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>Final exam — report card</h1>
+                  <p style={{ fontSize: 13, color: '#475569', marginBottom: 4 }}>{userName?.trim() || 'Learner'}</p>
+                  <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>{new Date().toLocaleString()}</p>
+                  <div style={{ display: 'flex', gap: 20, marginBottom: 16, flexWrap: 'wrap' }}>
+                    <div>
+                      <strong>Score</strong>
+                      <div style={{ fontSize: 18 }}>{finalPercent}%</div>
+                    </div>
+                    <div>
+                      <strong>Grade</strong>
+                      <div style={{ fontSize: 18 }}>{finalGrade}</div>
+                    </div>
+                    <div>
+                      <strong>Result</strong>
+                      <div style={{ fontSize: 18 }}>{finalIsPass ? 'Pass' : 'Not passed'}</div>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: 11, marginBottom: 12 }}>
+                    Pass threshold: {FINAL_EXAM_PASS_THRESHOLD_PERCENT}% · Correct / wrong / unanswered are recorded in
+                    your results.
+                  </p>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid #cbd5e1' }}>
+                        <th style={{ textAlign: 'left', padding: '6px 4px' }}>Subject</th>
+                        <th style={{ textAlign: 'right', padding: '6px 4px' }}>Correct</th>
+                        <th style={{ textAlign: 'right', padding: '6px 4px' }}>Total</th>
+                        <th style={{ textAlign: 'right', padding: '6px 4px' }}>%</th>
+                        <th style={{ textAlign: 'left', padding: '6px 4px' }}>Band</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {reportSubjectRows.map((r) => (
+                        <tr key={r.label} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                          <td style={{ padding: '6px 4px' }}>{r.label}</td>
+                          <td style={{ textAlign: 'right', padding: '6px 4px' }}>{r.correct}</td>
+                          <td style={{ textAlign: 'right', padding: '6px 4px' }}>{r.total}</td>
+                          <td style={{ textAlign: 'right', padding: '6px 4px' }}>{r.percent}%</td>
+                          <td style={{ padding: '6px 4px', textTransform: 'capitalize' }}>{r.band}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {reportSubjectRows.length === 0 && (
+                    <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>No per-subject breakdown available.</p>
+                  )}
+                </div>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

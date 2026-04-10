@@ -4,7 +4,7 @@ import { fetchLatestStageOneRollupByTopic } from '@/app/services/practiceStageTw
 import type { StatusBand } from '@/app/utils/assessmentScoring';
 
 export type CrossTestStageRow = {
-  id: 'stage1' | 'stage2' | 'mistakes' | 'mock';
+  id: 'stage1' | 'stage2' | 'mistakes' | 'mock' | 'final';
   shortLabel: string;
   hasData: boolean;
   /** Weighted first-try % (S1), or first-try % for S2 / 2.5 / mock attempt */
@@ -15,6 +15,9 @@ export type CrossTestStageRow = {
   statusBand: StatusBand | null;
   completedAt: string | null;
   note?: string;
+  /** Final exam only */
+  finalGrade?: string | null;
+  finalPassed?: boolean | null;
 };
 
 export type CrossTestAnalyticsPayload = {
@@ -104,15 +107,50 @@ async function fetchLatestMockAttempt(userId: string): Promise<{
   };
 }
 
+async function fetchLatestFinalExamAttempt(userId: string): Promise<{
+  percentFinal: number;
+  grade: string;
+  isPass: boolean;
+  completedAt: string | null;
+} | null> {
+  const { data, error } = await supabase
+    .from('final_exam_attempts')
+    .select('percent_final, grade, is_pass, completed_at')
+    .eq('user_id', userId)
+    .eq('status', 'completed')
+    .order('completed_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) console.warn('[crossTestAnalytics] final exam attempt', error.message);
+    return null;
+  }
+  const row = data as {
+    percent_final: number | string | null;
+    grade: string | null;
+    is_pass: boolean | null;
+    completed_at: string | null;
+  };
+  const pf = row.percent_final == null ? 0 : Number(row.percent_final);
+  return {
+    percentFinal: Number.isFinite(pf) ? Math.round(Number(pf) * 10) / 10 : 0,
+    grade: row.grade ?? '—',
+    isPass: !!row.is_pass,
+    completedAt: row.completed_at,
+  };
+}
+
 /**
  * Phase 8 — one row per pipeline stage from latest **completed** attempts in Supabase.
  */
 export async function fetchCrossTestAnalytics(userId: string): Promise<CrossTestAnalyticsPayload> {
-  const [s1Map, s2, m25, mock] = await Promise.all([
+  const [s1Map, s2, m25, mock, fin] = await Promise.all([
     fetchLatestStageOneRollupByTopic(userId),
     fetchLatestCompletedPreparationSummary(userId),
     fetchLatestMistakesAttempt(userId),
     fetchLatestMockAttempt(userId),
+    fetchLatestFinalExamAttempt(userId),
   ]);
 
   let sumCf = 0;
@@ -187,6 +225,23 @@ export async function fetchCrossTestAnalytics(userId: string): Promise<CrossTest
           : mock.hasCriticalBand
             ? 'Failed: CRITICAL topic or below threshold.'
             : 'Failed: below pass threshold.'
+        : undefined,
+    },
+    {
+      id: 'final',
+      shortLabel: 'Final',
+      hasData: !!fin,
+      firstTryPercent: fin ? fin.percentFinal : null,
+      secondaryPercent: null,
+      secondaryLabel: '—',
+      statusBand: null,
+      completedAt: fin?.completedAt ?? null,
+      finalGrade: fin?.grade ?? null,
+      finalPassed: fin != null ? fin.isPass : null,
+      note: fin
+        ? fin.isPass
+          ? `Passed final exam · Grade ${fin.grade}`
+          : `Not passed · Grade ${fin.grade}`
         : undefined,
     },
   ];

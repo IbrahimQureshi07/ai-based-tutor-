@@ -43,8 +43,9 @@ export function CrossTestAnalyticsSection({
       .filter((s) => s.hasData)
       .map((s) => ({
         name: s.shortLabel,
-        firstTry: s.firstTryPercent ?? 0,
-        secondary: s.secondaryPercent ?? 0,
+        firstTry: s.firstTryPercent ?? s.secondaryPercent ?? 0,
+        /** Final exam: single score bar (purple bar omitted). */
+        secondary: s.id === 'final' ? 0 : (s.secondaryPercent ?? 0),
       })) ?? [];
 
   const anyData = data?.stages.some((s) => s.hasData);
@@ -100,7 +101,7 @@ export function CrossTestAnalyticsSection({
               </ResponsiveContainer>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
               {data!.stages.map((s) => (
                 <div
                   key={s.id}
@@ -114,13 +115,36 @@ export function CrossTestAnalyticsSection({
                   ) : (
                     <>
                       <p className="text-xs text-muted-foreground mt-1">
-                        First-try:{' '}
-                        <span className="font-bold text-foreground">{s.firstTryPercent}%</span>
+                        {s.id === 'final' ? (
+                          <>
+                            Score:{' '}
+                            <span className="font-bold text-foreground">{s.firstTryPercent}%</span>
+                          </>
+                        ) : (
+                          <>
+                            First-try:{' '}
+                            <span className="font-bold text-foreground">{s.firstTryPercent}%</span>
+                          </>
+                        )}
                       </p>
-                      <p className="text-xs text-muted-foreground">
-                        {s.secondaryLabel}:{' '}
-                        <span className="font-semibold text-foreground">{s.secondaryPercent}%</span>
-                      </p>
+                      {s.id !== 'final' && (
+                        <p className="text-xs text-muted-foreground">
+                          {s.secondaryLabel}:{' '}
+                          <span className="font-semibold text-foreground">{s.secondaryPercent}%</span>
+                        </p>
+                      )}
+                      {s.id === 'final' && s.finalGrade != null && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Grade <span className="font-semibold text-foreground">{s.finalGrade}</span>
+                          {s.finalPassed != null && (
+                            <span
+                              className={`ml-2 font-bold ${s.finalPassed ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}
+                            >
+                              {s.finalPassed ? 'Passed' : 'Not passed'}
+                            </span>
+                          )}
+                        </p>
+                      )}
                       {s.statusBand && (
                         <span
                           className={`inline-flex mt-2 px-2 py-0.5 rounded text-[10px] font-bold border ${bandBadgeClass(s.statusBand)}`}
