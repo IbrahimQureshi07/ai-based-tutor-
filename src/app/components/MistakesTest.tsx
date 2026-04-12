@@ -53,6 +53,12 @@ function isSimilarId(id: string): boolean {
   return id.startsWith('similar-');
 }
 
+const FEEDBACK_DELAY_MS = 650;
+
+function feedbackDelay(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 function topicCodeFromBankQuestion(q: Question): string | null {
   for (const s of SUBJECTS) {
     if (subjectLabelMatches(q, s.key)) return s.key;
@@ -93,6 +99,8 @@ export function MistakesTest() {
   const [isCorrect, setIsCorrect] = useState(false);
   const [loadingHint, setLoadingHint] = useState(false);
   const [bankHint, setBankHint] = useState<{ text: string } | null>(null);
+  const [wrongRevealIndex, setWrongRevealIndex] = useState<number | null>(null);
+  const [showCorrectReveal, setShowCorrectReveal] = useState(false);
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -106,6 +114,7 @@ export function MistakesTest() {
   const unresolvedHardIdsRef = useRef<string[]>([]);
   const userIdRef = useRef<string | null>(null);
   const currentIndexRef = useRef(0);
+  const submitBusyRef = useRef(false);
   currentIndexRef.current = currentIndex;
 
   useEffect(() => {
@@ -174,6 +183,8 @@ export function MistakesTest() {
           setIsCorrect(snap.isCorrect);
           setSelectedOption(snap.selectedOption);
           setBankHint(snap.bankHint);
+          setWrongRevealIndex(snap.wrongRevealIndex ?? null);
+          setShowCorrectReveal(snap.showCorrectReveal ?? false);
           setShortfallNotice(snap.shortfallNotice);
           if (!cancelled) setLoadingQueue(false);
           return;
@@ -299,6 +310,8 @@ export function MistakesTest() {
           isCorrect,
           selectedOption,
           bankHint,
+          wrongRevealIndex,
+          showCorrectReveal,
           sources: [...sourcesRef.current],
           unresolvedHardIds: [...unresolvedHardIdsRef.current],
           perTopic: { ...perTopicRef.current },
@@ -327,14 +340,11 @@ export function MistakesTest() {
     isCorrect,
     selectedOption,
     bankHint,
+    wrongRevealIndex,
+    showCorrectReveal,
     adminMistakesCapApplied,
     shortfallNotice,
   ]);
-
-  const hideCorrectAnswer =
-    !isCorrect &&
-    !similarShowReveal &&
-    ((similarQ === null && bankHint !== null) || (similarQ !== null && !similarShowReveal && !showResult));
 
   const recordAndInsert = useCallback(
     async (kind: AssessmentOutcomeKind, bankSlot: Question, tier: AssessmentTier) => {
@@ -497,6 +507,8 @@ export function MistakesTest() {
       setShowResult(false);
       setSelectedOption(null);
       setIsCorrect(false);
+      setWrongRevealIndex(null);
+      setShowCorrectReveal(false);
       if (idx >= banks.length - 1) {
         await finishTest();
       } else {
@@ -532,6 +544,8 @@ export function MistakesTest() {
       setSelectedOption(null);
       setIsCorrect(false);
       setSimilarShowReveal(false);
+      setWrongRevealIndex(null);
+      setShowCorrectReveal(false);
     } catch {
       await leaveSlot(currentIndex);
     } finally {
@@ -541,58 +555,91 @@ export function MistakesTest() {
 
   const handleSubmit = async () => {
     if (selectedOption === null || !bankQ || atEnd) return;
+    if (submitBusyRef.current) return;
+    submitBusyRef.current = true;
     const tier = tiers[currentIndex];
 
-    if (similarQ) {
-      const correct = selectedOption === similarQ.correctAnswer;
+    try {
+      if (similarQ) {
+        const correct = selectedOption === similarQ.correctAnswer;
+        if (correct) {
+          setWrongRevealIndex(null);
+          setShowCorrectReveal(true);
+          setIsCorrect(true);
+          setShowResult(true);
+          await feedbackDelay(FEEDBACK_DELAY_MS);
+          await leaveSlot(currentIndex);
+          return;
+        }
+        setWrongRevealIndex(selectedOption);
+        setShowCorrectReveal(true);
+        setIsCorrect(false);
+        setShowResult(true);
+        setSimilarShowReveal(true);
+        return;
+      }
+
+      const correct = selectedOption === bankQ.correctAnswer;
+
+      if (bankHint === null) {
+        if (correct) {
+          setWrongRevealIndex(null);
+          setShowCorrectReveal(true);
+          setIsCorrect(true);
+          setShowResult(true);
+          await recordAndInsert('correct_first', bankQ, tier);
+          await feedbackDelay(FEEDBACK_DELAY_MS);
+          await leaveSlot(currentIndex);
+          return;
+        }
+        setWrongRevealIndex(selectedOption);
+        setShowCorrectReveal(false);
+        setIsCorrect(false);
+        setShowResult(true);
+        setLoadingHint(true);
+        try {
+          const hint = await generateHint(
+            bankQ.question,
+            bankQ.options,
+            bankQ.category || 'General',
+            bankQ.difficulty || 'medium'
+          );
+          setBankHint({ text: hint });
+        } catch {
+          setBankHint({
+            text: 'Re-read the question carefully and compare each option before you try again.',
+          });
+        } finally {
+          setLoadingHint(false);
+        }
+        setShowResult(false);
+        setWrongRevealIndex(null);
+        setShowCorrectReveal(false);
+        setSelectedOption(null);
+        return;
+      }
+
       if (correct) {
+        setWrongRevealIndex(null);
+        setShowCorrectReveal(true);
+        setIsCorrect(true);
+        setShowResult(true);
+        await recordAndInsert('medium_wrong', bankQ, tier);
+        await feedbackDelay(FEEDBACK_DELAY_MS);
         await leaveSlot(currentIndex);
         return;
       }
+
+      setWrongRevealIndex(selectedOption);
+      setShowCorrectReveal(true);
       setIsCorrect(false);
       setShowResult(true);
-      setSimilarShowReveal(true);
-      return;
+      await recordAndInsert('hard_wrong', bankQ, tier);
+      await feedbackDelay(FEEDBACK_DELAY_MS);
+      await loadSimilarAfterHard(tier);
+    } finally {
+      submitBusyRef.current = false;
     }
-
-    const correct = selectedOption === bankQ.correctAnswer;
-
-    if (bankHint === null) {
-      if (correct) {
-        await recordAndInsert('correct_first', bankQ, tier);
-        await leaveSlot(currentIndex);
-        return;
-      }
-      setLoadingHint(true);
-      try {
-        const hint = await generateHint(
-          bankQ.question,
-          bankQ.options,
-          bankQ.category || 'General',
-          bankQ.difficulty || 'medium'
-        );
-        setBankHint({ text: hint });
-      } catch {
-        setBankHint({
-          text: 'Re-read the question carefully and compare each option before you try again.',
-        });
-      } finally {
-        setLoadingHint(false);
-      }
-      setSelectedOption(null);
-      setShowResult(false);
-      setIsCorrect(false);
-      return;
-    }
-
-    if (correct) {
-      await recordAndInsert('medium_wrong', bankQ, tier);
-      await leaveSlot(currentIndex);
-      return;
-    }
-
-    await recordAndInsert('hard_wrong', bankQ, tier);
-    await loadSimilarAfterHard(tier);
   };
 
   const handleSkipSimilar = async () => {
@@ -604,6 +651,8 @@ export function MistakesTest() {
     setSimilarShowReveal(false);
     setShowResult(false);
     setSelectedOption(null);
+    setWrongRevealIndex(null);
+    setShowCorrectReveal(false);
     await leaveSlot(currentIndex);
   };
 
@@ -616,29 +665,52 @@ export function MistakesTest() {
     setCurrentScreen('dashboard');
   };
 
+  const revealGreenOnCorrect =
+    similarShowReveal || (showResult && (isCorrect || showCorrectReveal));
+
   const getOptionClass = (index: number) => {
-    if (!showResult && !similarShowReveal) {
+    const revealed = showResult || similarShowReveal;
+    if (!revealed) {
       return selectedOption === index
         ? 'border-primary bg-primary/10 ring-2 ring-primary'
         : 'border-border hover:border-primary/50 hover:bg-muted/50';
     }
-    const reveal = isCorrect || similarShowReveal;
-    if (reveal && index === currentQ.correctAnswer) {
+    if (revealGreenOnCorrect && index === currentQ.correctAnswer) {
       return 'border-success bg-success/10 ring-2 ring-success';
     }
-    if (index === selectedOption && !isCorrect && showResult) {
+    if (wrongRevealIndex !== null && index === wrongRevealIndex && !isCorrect && showResult) {
       return 'border-destructive bg-destructive/10 ring-2 ring-destructive';
     }
-    if (!reveal && hideCorrectAnswer && index === currentQ.correctAnswer) {
-      return 'border-border opacity-60';
+    if (
+      selectedOption !== null &&
+      selectedOption === index &&
+      index !== currentQ.correctAnswer &&
+      index !== wrongRevealIndex
+    ) {
+      return 'border-primary bg-primary/10 ring-2 ring-primary';
     }
     return 'border-border opacity-50';
+  };
+
+  const optionLetterClass = (index: number) => {
+    const revealed = showResult || similarShowReveal;
+    if (revealGreenOnCorrect && index === currentQ.correctAnswer) {
+      return 'bg-success text-success-foreground';
+    }
+    if (wrongRevealIndex !== null && index === wrongRevealIndex && !isCorrect && showResult) {
+      return 'bg-destructive text-destructive-foreground';
+    }
+    if (selectedOption === index) {
+      return 'bg-primary text-primary-foreground';
+    }
+    return 'bg-muted';
   };
 
   const optionsDisabled =
     similarShowReveal ||
     loadingSimilar ||
-    (showResult && similarQ === null && bankHint === null);
+    loadingHint ||
+    (showResult && isCorrect);
 
   if (questionsLoading || loadingQueue) {
     return (
@@ -796,15 +868,7 @@ export function MistakesTest() {
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0 ${
-                          (isCorrect || similarShowReveal) && index === currentQ.correctAnswer
-                            ? 'bg-success text-success-foreground'
-                            : showResult && index === selectedOption && !isCorrect
-                              ? 'bg-destructive text-destructive-foreground'
-                              : selectedOption === index
-                                ? 'bg-primary text-primary-foreground'
-                                : 'bg-muted'
-                        }`}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm flex-shrink-0 ${optionLetterClass(index)}`}
                       >
                         {String.fromCharCode(65 + index)}
                       </div>
@@ -813,6 +877,18 @@ export function MistakesTest() {
                   </button>
                 ))}
               </div>
+
+              {!similarQ &&
+                bankHint &&
+                showResult &&
+                showCorrectReveal &&
+                (wrongRevealIndex !== null || isCorrect) &&
+                Boolean(bankQ?.explanation?.trim()) && (
+                  <div className="mb-6 p-4 rounded-xl border border-border bg-muted/30 text-sm">
+                    <p className="font-medium mb-1">Explanation</p>
+                    <p className="text-muted-foreground">{bankQ.explanation}</p>
+                  </div>
+                )}
 
               {similarShowReveal && similarQ && (
                 <div className="mb-6 p-4 rounded-xl border border-border bg-muted/30 text-sm">

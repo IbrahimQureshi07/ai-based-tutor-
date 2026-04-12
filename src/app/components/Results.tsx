@@ -321,8 +321,6 @@ export function Results() {
           <ThreeStageCombinedAnalyticsSection data={lastSessionResults.mistakesTestCombinedAnalytics} />
         )}
 
-        <JourneyAiReportSection />
-
         {lastSessionResults?.finalExamAssessment && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -808,6 +806,8 @@ export function Results() {
             </Card>
           </motion.div>
         )}
+
+        <JourneyAiReportSection />
 
         {/* Performance Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -29,6 +29,10 @@ type FlowBase = {
   isCorrect: boolean;
   selectedOption: number | null;
   bankHint: { text: string } | null;
+  /** Last graded wrong option (bank + similar); optional for older saved sessions. */
+  wrongRevealIndex?: number | null;
+  /** When true with showResult, highlight the correct option (hidden on first wrong until hint + 2nd submit). */
+  showCorrectReveal?: boolean;
 };
 
 export type StageOneFlowSnapshotV1 = FlowBase & {
