@@ -33,7 +33,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { StageTwoProgressAnalyticsSection } from '@/app/components/StageTwoProgressAnalyticsSection';
 import { ThreeStageCombinedAnalyticsSection } from '@/app/components/ThreeStageCombinedAnalyticsSection';
 import { JourneyAiReportSection } from '@/app/components/JourneyAiReportSection';
@@ -41,6 +41,7 @@ import { LEVEL_SLUGS, LEVEL_BAND_LABELS, type LevelBandSlug } from '@/app/consta
 import { getCurrentUserId } from '@/app/services/userWrongQuestions';
 import { userHasPassedMistakesTest } from '@/app/services/mistakesTestAggregation';
 import { userHasPassedMockTest } from '@/app/services/mockTest';
+import { nextAssessmentSubjectAfter } from '@/app/utils/nextAssessmentSubject';
 
 export function Results() {
   const {
@@ -50,6 +51,7 @@ export function Results() {
     setChatOpen,
     lastSessionResults,
     setSubjectSelectFor,
+    setSelectedAssessmentTopic,
   } = useApp();
   const [hasCheckedUnlock, setHasCheckedUnlock] = useState(false);
   const [mockEligible, setMockEligible] = useState(false);
@@ -102,6 +104,100 @@ export function Results() {
   };
 
   const nextUnlock = getNextUnlock();
+
+  const primaryContinue = useMemo(() => {
+    const last = lastSessionResults;
+    const goS2 = () => setCurrentScreen('stageTwoPreparation');
+    const goMistakes = () => setCurrentScreen('mistakesTest');
+    const goMock = () => {
+      setSubjectSelectFor('mock');
+      setCurrentScreen('mock');
+    };
+    const goFinal = () => setCurrentScreen('final');
+    const goDash = () => setCurrentScreen('dashboard');
+    const goAssessment = (topicKey: string) => {
+      setSubjectSelectFor('assessment');
+      setSelectedAssessmentTopic(topicKey);
+      setCurrentScreen('assessment');
+    };
+
+    if (!last) {
+      return {
+        label: finalEligible ? 'Go to Final Exam' : mockEligible ? 'Go to Mock Test' : 'Open Stage 2 preparation',
+        action: finalEligible ? goFinal : mockEligible ? goMock : goS2,
+      };
+    }
+
+    if (last.finalExamAssessment) {
+      return { label: 'Back to dashboard', action: goDash };
+    }
+
+    if (last.mockTestAssessment) {
+      if (finalEligible) {
+        return { label: 'Take final exam', action: goFinal };
+      }
+      return { label: 'Back to dashboard', action: goDash };
+    }
+
+    if (last.mistakesTestAssessment || last.mistakesTestCombinedAnalytics) {
+      if (mockEligible) {
+        return { label: 'Go to mock test', action: goMock };
+      }
+      return { label: 'Run Stage 2.5 mistakes test again', action: goMistakes };
+    }
+
+    if (last.stageTwoAssessment || last.stageTwoProgressAnalytics) {
+      return { label: 'Start Stage 2.5 mistakes test', action: goMistakes };
+    }
+
+    if (last.stageOneAssessment) {
+      const nextSub = nextAssessmentSubjectAfter(last.stageOneAssessment.topicCode);
+      if (nextSub) {
+        return {
+          label: `Start ${nextSub.label}`,
+          action: () => goAssessment(nextSub.key),
+        };
+      }
+      return { label: 'Open Stage 2 preparation', action: goS2 };
+    }
+
+    return {
+      label: finalEligible ? 'Go to Final Exam' : mockEligible ? 'Go to Mock Test' : 'Open Stage 2 preparation',
+      action: finalEligible ? goFinal : mockEligible ? goMock : goS2,
+    };
+  }, [
+    lastSessionResults,
+    mockEligible,
+    finalEligible,
+    setCurrentScreen,
+    setSubjectSelectFor,
+    setSelectedAssessmentTopic,
+  ]);
+
+  const weakAreasContinue = useMemo(() => {
+    const s1 = lastSessionResults?.stageOneAssessment;
+    if (!s1) {
+      return {
+        label: 'Open Stage 2 preparation',
+        action: () => setCurrentScreen('stageTwoPreparation'),
+      };
+    }
+    const nextSub = nextAssessmentSubjectAfter(s1.topicCode);
+    if (nextSub) {
+      return {
+        label: `Continue: ${nextSub.label}`,
+        action: () => {
+          setSubjectSelectFor('assessment');
+          setSelectedAssessmentTopic(nextSub.key);
+          setCurrentScreen('assessment');
+        },
+      };
+    }
+    return {
+      label: 'Open Stage 2 preparation',
+      action: () => setCurrentScreen('stageTwoPreparation'),
+    };
+  }, [lastSessionResults?.stageOneAssessment, setCurrentScreen, setSubjectSelectFor, setSelectedAssessmentTopic]);
 
   useEffect(() => {
     if (!finalEligible || !hasCheckedUnlock) return;
@@ -966,13 +1062,9 @@ export function Results() {
                 <p className="text-muted-foreground text-sm py-4">No weak areas in this test — or complete a test to see topics to improve.</p>
               )}
             </div>
-            <Button
-              onClick={() => setCurrentScreen('stageTwoPreparation')}
-              variant="destructive"
-              className="w-full"
-            >
+            <Button onClick={() => void weakAreasContinue.action()} variant="destructive" className="w-full">
               <BookOpen className="w-4 h-4 mr-2" />
-              Open Stage 2 preparation
+              {weakAreasContinue.label}
             </Button>
           </Card>
         </motion.div>
@@ -987,20 +1079,13 @@ export function Results() {
             <h3 className="font-semibold mb-4">Next Unlock: {nextUnlock.title}</h3>
             <p className="text-muted-foreground mb-6">{nextUnlock.message}</p>
             <div className="flex flex-wrap gap-3">
-              <Button
-                onClick={() => setCurrentScreen('dashboard')}
-                className="gap-2"
-              >
+              <Button variant="outline" onClick={() => setCurrentScreen('dashboard')} className="gap-2">
                 Back to Dashboard
                 <ArrowRight className="w-4 h-4" />
               </Button>
-              <Button
-                onClick={() => setCurrentScreen(finalEligible ? 'final' : mockEligible ? 'mock' : 'stageTwoPreparation')}
-                variant="outline"
-                className="gap-2"
-              >
+              <Button className="gap-2" onClick={() => void primaryContinue.action()}>
                 <BookOpen className="w-4 h-4" />
-                {finalEligible ? 'Go to Final Exam' : mockEligible ? 'Go to Mock Test' : 'Stage 2 preparation'}
+                {primaryContinue.label}
               </Button>
               {mockEligible && (
                 <Button

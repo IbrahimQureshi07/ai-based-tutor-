@@ -26,7 +26,7 @@ import {
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/app/components/ui/tooltip';
 import { aiSuggestions } from '@/app/data/exam-data';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuestions } from '@/app/hooks/useQuestions';
 import { backfillMissingQuestionLevels } from '@/app/services/questionLevels';
 import { isAdminEmail } from '@/app/utils/adminEmails';
@@ -116,6 +116,22 @@ export function Dashboard() {
 
   const mistakesTestUnlocked = stageTwoUnlocked && stageTwoPrepDone;
 
+  /** Hero strip: live pipeline stats from Supabase when available; otherwise context defaults. */
+  const heroDisplay = useMemo(() => {
+    const hm = crossAnalytics?.heroMetrics;
+    if (!hm) return userProgress;
+    return {
+      ...userProgress,
+      accuracy: hm.accuracy,
+      examReadiness: hm.examReadiness,
+      totalQuestions: hm.totalSlots,
+      level: hm.level,
+      rank: hm.rank,
+      todaysCompleted: hm.todaysCompletedSlots,
+      streak: hm.dayStreak,
+    };
+  }, [crossAnalytics?.heroMetrics, userProgress]);
+
   // Check for unlock animations
   useEffect(() => {
     if (mockTestUnlocked && !showMockUnlock) {
@@ -130,20 +146,20 @@ export function Dashboard() {
   }, [finalExamUnlocked]);
 
   const getReadinessColor = () => {
-    if (userProgress.examReadiness >= 80) return 'text-success';
-    if (userProgress.examReadiness >= 50) return 'text-warning';
+    if (heroDisplay.examReadiness >= 80) return 'text-success';
+    if (heroDisplay.examReadiness >= 50) return 'text-warning';
     return 'text-destructive';
   };
 
   const getReadinessZone = () => {
-    if (userProgress.examReadiness >= 80) return 'Ready 🎯';
-    if (userProgress.examReadiness >= 50) return 'Almost There 💪';
+    if (heroDisplay.examReadiness >= 80) return 'Ready 🎯';
+    if (heroDisplay.examReadiness >= 50) return 'Almost There 💪';
     return 'Keep Going 🚀';
   };
 
   const getAISuggestion = () => {
-    const level = userProgress.examReadiness >= 80 ? 'high' : 
-                  userProgress.examReadiness >= 50 ? 'medium' : 'low';
+    const level = heroDisplay.examReadiness >= 80 ? 'high' : 
+                  heroDisplay.examReadiness >= 50 ? 'medium' : 'low';
     const suggestions = aiSuggestions[level];
     return suggestions[Math.floor(Math.random() * suggestions.length)];
   };
@@ -262,20 +278,20 @@ export function Dashboard() {
             <Card className="p-6 bg-gradient-to-br from-card to-primary/5 border-primary/20">
               <div className="flex flex-col items-center">
                 <div className="relative">
-                  <CircularProgress value={userProgress.accuracy || 0} size={140} color="#2563EB" />
+                  <CircularProgress value={heroDisplay.accuracy || 0} size={140} color="#2563EB" />
                   <div className="absolute inset-0 flex items-center justify-center flex-col">
-                    <span className="text-3xl font-bold">{userProgress.accuracy}%</span>
+                    <span className="text-3xl font-bold">{heroDisplay.accuracy}%</span>
                     <span className="text-xs text-muted-foreground">Accuracy</span>
                   </div>
                 </div>
                 <div className="mt-4 text-center space-y-1">
                   <div className="flex items-center justify-center gap-2">
                     <Trophy className="w-4 h-4 text-primary" />
-                    <span className="font-semibold">Level {userProgress.level}</span>
+                    <span className="font-semibold">Level {heroDisplay.level}</span>
                   </div>
                   <div className="flex items-center justify-center gap-2">
                     <Flame className="w-4 h-4 text-orange-500" />
-                    <span className="text-sm">{userProgress.streak} Day Streak</span>
+                    <span className="text-sm">{heroDisplay.streak} Day Streak</span>
                   </div>
                 </div>
               </div>
@@ -296,7 +312,7 @@ export function Dashboard() {
               <div className="space-y-4">
                 <div className="text-center">
                   <div className={`text-5xl font-bold mb-2 ${getReadinessColor()}`}>
-                    {userProgress.examReadiness}%
+                    {heroDisplay.examReadiness}%
                   </div>
                   <div className="text-sm text-muted-foreground mb-2">Exam Readiness</div>
                   <div className="inline-block px-3 py-1 rounded-full bg-muted text-sm font-medium">
@@ -304,7 +320,7 @@ export function Dashboard() {
                   </div>
                 </div>
                 <Progress 
-                  value={userProgress.examReadiness} 
+                  value={heroDisplay.examReadiness} 
                   className="h-2"
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
@@ -332,21 +348,21 @@ export function Dashboard() {
                   <div className="flex justify-between text-sm mb-2">
                     <span className="text-muted-foreground">Target</span>
                     <span className="font-semibold">
-                      {userProgress.todaysCompleted}/{userProgress.todaysTarget}
+                      {heroDisplay.todaysCompleted}/{heroDisplay.todaysTarget}
                     </span>
                   </div>
                   <Progress 
-                    value={(userProgress.todaysCompleted / userProgress.todaysTarget) * 100} 
+                    value={Math.min(100, (heroDisplay.todaysCompleted / Math.max(1, heroDisplay.todaysTarget)) * 100)} 
                     className="h-2"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-muted/50 rounded-lg p-3">
-                    <div className="text-2xl font-bold">{userProgress.totalQuestions}</div>
+                    <div className="text-2xl font-bold">{heroDisplay.totalQuestions}</div>
                     <div className="text-xs text-muted-foreground">Total Questions</div>
                   </div>
                   <div className="bg-muted/50 rounded-lg p-3">
-                    <div className="text-2xl font-bold text-primary">{userProgress.rank}</div>
+                    <div className="text-2xl font-bold text-primary">{heroDisplay.rank}</div>
                     <div className="text-xs text-muted-foreground">Current Rank</div>
                   </div>
                 </div>
