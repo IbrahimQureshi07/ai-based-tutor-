@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { pushQuestionToTutorChat } from '@/app/services/tutorChatPush';
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '@/app/context/ExamContext';
 import { Button } from '@/app/components/ui/button';
@@ -30,7 +31,7 @@ import { isAdminEmail } from '@/app/utils/adminEmails';
 import { aggregateMockFinalByLevelBand } from '@/app/utils/buildSessionResultsByLevelBand';
 import { buildFinalExamQueue, type FinalExamQueueSlot } from '@/app/utils/buildFinalExamQueue';
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
-import { Clock, AlertTriangle, Award, Download, Share2, ClipboardList, Printer } from 'lucide-react';
+import { Clock, AlertTriangle, Award, Download, Share2, ClipboardList, Printer, MessageCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/app/components/ui/dialog';
 import {
   loadFinalExamSession,
@@ -122,6 +123,8 @@ export function FinalExam() {
     setLastSessionResults,
     setActiveTutorMcq,
     userName,
+    userProgress,
+    chatMessages,
   } = useApp();
   const { questions: bankQuestions, loading: questionsLoading, error: questionsError } = useQuestions();
 
@@ -133,6 +136,8 @@ export function FinalExam() {
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
+  const [tutorPushBusy, setTutorPushBusy] = useState(false);
+  const tutorBusyRef = useRef(false);
   const [answers, setAnswers] = useState<Map<number, number>>(new Map());
   const [timeLeft, setTimeLeft] = useState(FINAL_EXAM_TIME_LIMIT_SECONDS);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
@@ -328,6 +333,48 @@ export function FinalExam() {
   const nextBlocked = !answers.has(currentQuestionIndex) && selectedOption === null;
   const navLocked = nextBlocked;
 
+  const runFinalTutorPush = useCallback(
+    async (q: Question) => {
+      if (tutorBusyRef.current || questionsLoading || questionsError || !q) return;
+      tutorBusyRef.current = true;
+      setTutorPushBusy(true);
+      try {
+        await pushQuestionToTutorChat(
+          'Final exam',
+          q,
+          {
+            addChatMessage,
+            setChatOpen,
+            setActiveTutorMcq,
+            chatMessages,
+            bankQuestions,
+            userProgress: {
+              accuracy: userProgress.accuracy,
+              weakAreas: userProgress.weakAreas,
+              level: userProgress.level,
+            },
+          },
+          'Final exam · no hints · no retries; answer selected on this item.'
+        );
+      } finally {
+        tutorBusyRef.current = false;
+        setTutorPushBusy(false);
+      }
+    },
+    [
+      questionsLoading,
+      questionsError,
+      addChatMessage,
+      setChatOpen,
+      setActiveTutorMcq,
+      chatMessages,
+      bankQuestions,
+      userProgress.accuracy,
+      userProgress.weakAreas,
+      userProgress.level,
+    ]
+  );
+
   useEffect(() => {
     if (questionsLoading || loadingQueue || testQuestions.length === 0 || testCompleted || !testStarted) {
       setActiveTutorMcq(null);
@@ -342,7 +389,7 @@ export function FinalExam() {
       question: q.question,
       options: q.options,
       correctIndex: q.correctAnswer,
-      explanation: '',
+      explanation: (q.explanation || '').trim(),
       subject: q.subject || q.category,
     });
     return () => setActiveTutorMcq(null);
@@ -784,6 +831,22 @@ export function FinalExam() {
                       </motion.button>
                     ))}
                   </div>
+
+                  {selectedOption !== null && currentQuestion && (
+                    <div className="mb-6 flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={tutorPushBusy}
+                        onClick={() => void runFinalTutorPush(currentQuestion)}
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        Add to chat
+                      </Button>
+                    </div>
+                  )}
 
                   {navHint && <p className="text-sm text-destructive mb-4">{navHint}</p>}
 

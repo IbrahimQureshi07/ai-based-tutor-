@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { pushQuestionToTutorChat } from '@/app/services/tutorChatPush';
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '@/app/context/ExamContext';
 import { Button } from '@/app/components/ui/button';
@@ -22,7 +23,7 @@ import { buildMockTestQueue, MOCK_ADMIN_TOTAL_QUESTIONS, MOCK_TOTAL_QUESTIONS } 
 import { isAdminEmail } from '@/app/utils/adminEmails';
 import { generateSimilarQuestion } from '@/app/services/aiService';
 import { mockTopicRollupsAndCritical, buildAssessmentNarrative } from '@/app/utils/assessmentScoring';
-import { Clock, Flag, AlertTriangle, CheckCircle2, RotateCcw, ClipboardList } from 'lucide-react';
+import { Clock, Flag, AlertTriangle, CheckCircle2, RotateCcw, ClipboardList, MessageCircle } from 'lucide-react';
 import { MOCK_PASS_THRESHOLD_PERCENT, MOCK_TIME_LIMIT_SECONDS } from '@/app/constants/mockExam';
 import {
   loadMockSession,
@@ -112,6 +113,7 @@ export function MockTest() {
     setSelectedMockSubject,
     setSubjectSelectFor,
     setActiveTutorMcq,
+    chatMessages,
   } = useApp();
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
   const [testQuestions, setTestQuestions] = useState<Question[]>([]);
@@ -130,6 +132,8 @@ export function MockTest() {
   const [testStarted, setTestStarted] = useState(false);
   const [inRetry, setInRetry] = useState(false);
   const [retryQuestion, setRetryQuestion] = useState<Question | null>(null);
+  const [tutorPushBusy, setTutorPushBusy] = useState(false);
+  const tutorBusyRef = useRef(false);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
   const [retryHint, setRetryHint] = useState<string | null>(null);
   const [firstPhaseHint, setFirstPhaseHint] = useState<string | null>(null);
@@ -686,6 +690,48 @@ export function MockTest() {
     currentQuestionIndex,
   ]);
 
+  const runMockTutorPush = useCallback(
+    async (q: Question, note: string) => {
+      if (tutorBusyRef.current || questionsLoading || questionsError) return;
+      tutorBusyRef.current = true;
+      setTutorPushBusy(true);
+      try {
+        await pushQuestionToTutorChat(
+          'Mock exam',
+          q,
+          {
+            addChatMessage,
+            setChatOpen,
+            setActiveTutorMcq,
+            chatMessages,
+            bankQuestions: questions,
+            userProgress: {
+              accuracy: userProgress.accuracy,
+              weakAreas: userProgress.weakAreas,
+              level: userProgress.level,
+            },
+          },
+          note
+        );
+      } finally {
+        tutorBusyRef.current = false;
+        setTutorPushBusy(false);
+      }
+    },
+    [
+      questionsLoading,
+      questionsError,
+      addChatMessage,
+      setChatOpen,
+      setActiveTutorMcq,
+      chatMessages,
+      questions,
+      userProgress.accuracy,
+      userProgress.weakAreas,
+      userProgress.level,
+    ]
+  );
+
   const stashUncommittedAndGoTo = (targetIndex: number) => {
     const idx = currentQuestionIndex;
     if (!getSlot(idx) && !inRetry && selectedOption !== null) {
@@ -1085,6 +1131,28 @@ export function MockTest() {
                     </motion.button>
                   ))}
                 </div>
+
+                {selectedOption !== null && !loadingSimilar && displayQuestion && (
+                  <div className="mb-6 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={tutorPushBusy}
+                      onClick={() => {
+                        const note =
+                          inRetry && retryQuestion
+                            ? 'Mock exam · retry (similar harder) question · no hints; answer selected.'
+                            : 'Mock exam · bank slot · first chosen answer on this item; no hints.';
+                        void runMockTutorPush(displayQuestion, note);
+                      }}
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      Add to chat
+                    </Button>
+                  </div>
+                )}
 
                 {(retryHint || firstPhaseHint) && (
                   <p className="text-sm text-destructive mb-4">{retryHint ?? firstPhaseHint}</p>

@@ -42,6 +42,17 @@ import { getCurrentUserId } from '@/app/services/userWrongQuestions';
 import { userHasPassedMistakesTest } from '@/app/services/mistakesTestAggregation';
 import { userHasPassedMockTest } from '@/app/services/mockTest';
 import { nextAssessmentSubjectAfter } from '@/app/utils/nextAssessmentSubject';
+import { AI_CHAT_DEDUP_PREFIX } from '@/app/services/examTabSessionClear';
+
+function shouldShowUnlockChatOnce(storageKey: string): boolean {
+  try {
+    if (sessionStorage.getItem(storageKey)) return false;
+    sessionStorage.setItem(storageKey, '1');
+    return true;
+  } catch {
+    return true;
+  }
+}
 
 export function Results() {
   const {
@@ -63,7 +74,7 @@ export function Results() {
   const incorrect = lastSessionResults?.incorrect ?? (userProgress.totalQuestions - userProgress.correctAnswers);
   const sessionAccuracy = total > 0 ? Math.round((correct / total) * 100) : userProgress.accuracy;
 
-  // Check for auto-unlock on mount
+  // Check for auto-unlock on mount (toast once per tab session + user; stable addChatMessage avoids effect storms)
   useEffect(() => {
     if (hasCheckedUnlock) return;
     void (async () => {
@@ -73,10 +84,13 @@ export function Results() {
       setMockEligible(canMock);
       setFinalEligible(canFinal);
       if (canFinal) {
-        setTimeout(() => {
-          addChatMessage('ai', '🏆 Outstanding! You passed mock criteria. Final Exam is now unlocked.');
-          setChatOpen(true);
-        }, 1000);
+        const dedupeKey = `${AI_CHAT_DEDUP_PREFIX}mock_final_unlock:${uid ?? 'anon'}`;
+        if (shouldShowUnlockChatOnce(dedupeKey)) {
+          setTimeout(() => {
+            addChatMessage('ai', '🏆 Outstanding! You passed mock criteria. Final Exam is now unlocked.');
+            setChatOpen(true);
+          }, 1000);
+        }
       }
       setHasCheckedUnlock(true);
     })();
@@ -201,12 +215,16 @@ export function Results() {
 
   useEffect(() => {
     if (!finalEligible || !hasCheckedUnlock) return;
-    if (userProgress.mockTestsCompleted >= 1) {
+    if (userProgress.mockTestsCompleted < 1) return;
+    void (async () => {
+      const uid = await getCurrentUserId();
+      const dedupeKey = `${AI_CHAT_DEDUP_PREFIX}final_best_luck:${uid ?? 'anon'}`;
+      if (!shouldShowUnlockChatOnce(dedupeKey)) return;
       setTimeout(() => {
         addChatMessage('ai', '🏆 Final exam unlocked. Best of luck!');
         setChatOpen(true);
       }, 1000);
-    }
+    })();
   }, [addChatMessage, finalEligible, hasCheckedUnlock, setChatOpen, userProgress.mockTestsCompleted]);
 
   const pieData = [
@@ -370,6 +388,36 @@ export function Results() {
                   {mockFailExplanation}
                 </div>
               )}
+              <div className="mt-8 flex flex-wrap justify-center gap-3">
+                <Button
+                  variant="outline"
+                  className="gap-2 border-white/70 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  onClick={() => setCurrentScreen('dashboard')}
+                >
+                  Back to Dashboard
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+                <Button
+                  className="gap-2 bg-white text-primary hover:bg-white/90 shadow-md"
+                  onClick={() => void primaryContinue.action()}
+                >
+                  <BookOpen className="w-4 h-4" />
+                  {primaryContinue.label}
+                </Button>
+                {mockEligible && (
+                  <Button
+                    variant="outline"
+                    className="gap-2 border-white/70 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    onClick={() => {
+                      setSubjectSelectFor('mock');
+                      setCurrentScreen('mock');
+                    }}
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Restart mock
+                  </Button>
+                )}
+              </div>
             </motion.div>
           </div>
         </div>
@@ -406,6 +454,23 @@ export function Results() {
                   <div className="text-5xl font-bold">{userProgress.level}</div>
                   <div className="text-white/80">Level</div>
                 </div>
+              </div>
+              <div className="mt-8 flex flex-wrap justify-center gap-3">
+                <Button
+                  variant="outline"
+                  className="gap-2 border-white/70 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                  onClick={() => setCurrentScreen('dashboard')}
+                >
+                  Back to Dashboard
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+                <Button
+                  className="gap-2 bg-white text-primary hover:bg-white/90 shadow-md"
+                  onClick={() => void primaryContinue.action()}
+                >
+                  <BookOpen className="w-4 h-4" />
+                  {primaryContinue.label}
+                </Button>
               </div>
             </motion.div>
           </div>

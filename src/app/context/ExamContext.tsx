@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
 import { UserProgress, initialUserProgress, Question } from '@/app/data/exam-data';
 import { supabase } from '@/app/services/supabase';
 import {
@@ -330,9 +330,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
-  const addChatMessage = (role: 'user' | 'ai', content: string) => {
-    setChatMessages(prev => [...prev, { role, content, timestamp: new Date() }]);
-  };
+  const addChatMessage = useCallback((role: 'user' | 'ai', content: string) => {
+    setChatMessages((prev) => [...prev, { role, content, timestamp: new Date() }]);
+  }, []);
 
   const addMistake = (question: Question, userAnswer: number) => {
     setMistakesList(prev => {

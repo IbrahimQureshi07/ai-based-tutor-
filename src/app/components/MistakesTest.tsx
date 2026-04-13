@@ -36,9 +36,6 @@ import {
   type AssessmentOutcomeKind,
 } from '@/app/utils/assessmentScoring';
 import { MISTAKES_TEST_TOTAL } from '@/app/utils/mistakesTestConstants';
-
-/** Admins get a short run for QA; learners unchanged. */
-const MISTAKES_TEST_ADMIN_QUESTION_CAP = 10;
 import { buildMistakesTestCombinedAnalytics } from '@/app/utils/buildMistakesTestCombinedAnalytics';
 import {
   loadMistakesSnapshot,
@@ -47,7 +44,11 @@ import {
 } from '@/app/services/linearFlowSessionStorage';
 import { subjectLabelMatches } from '@/app/utils/subjectMatch';
 import { generateHint, generateSimilarQuestion } from '@/app/services/aiService';
-import { ArrowLeft, Lightbulb, ChevronRight, SkipForward } from 'lucide-react';
+import { ArrowLeft, Lightbulb, ChevronRight, SkipForward, MessageCircle } from 'lucide-react';
+import { pushQuestionToTutorChat } from '@/app/services/tutorChatPush';
+
+/** Admins get a short run for QA; learners unchanged. */
+const MISTAKES_TEST_ADMIN_QUESTION_CAP = 10;
 
 function isSimilarId(id: string): boolean {
   return id.startsWith('similar-');
@@ -78,7 +79,15 @@ function bumpPerTopic(ref: Record<string, PerTopicSt>, topicKey: string, kind: A
 }
 
 export function MistakesTest() {
-  const { setCurrentScreen, setLastSessionResults, setActiveTutorMcq } = useApp();
+  const {
+    setCurrentScreen,
+    setLastSessionResults,
+    setActiveTutorMcq,
+    userProgress,
+    addChatMessage,
+    setChatOpen,
+    chatMessages,
+  } = useApp();
 
   const { questions, loading: questionsLoading, error: questionsError } = useQuestions();
 
@@ -101,6 +110,10 @@ export function MistakesTest() {
   const [bankHint, setBankHint] = useState<{ text: string } | null>(null);
   const [wrongRevealIndex, setWrongRevealIndex] = useState<number | null>(null);
   const [showCorrectReveal, setShowCorrectReveal] = useState(false);
+  const [tutorPushBusy, setTutorPushBusy] = useState(false);
+  const tutorBusyRef = useRef(false);
+  const [bankHintAwaitNext, setBankHintAwaitNext] = useState(false);
+  const pendingBankHintNextRef = useRef<null | { kind: 'leave' } | { kind: 'similar'; tier: AssessmentTier }>(null);
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -122,6 +135,48 @@ export function MistakesTest() {
     banksRef.current = banks;
     tiersRef.current = tiers;
   }, [banks, tiers]);
+
+  const runMistakesTutorPush = useCallback(
+    async (q: Question, note: string) => {
+      if (tutorBusyRef.current || questionsLoading || questionsError) return;
+      tutorBusyRef.current = true;
+      setTutorPushBusy(true);
+      try {
+        await pushQuestionToTutorChat(
+          'Stage 2.5',
+          q,
+          {
+            addChatMessage,
+            setChatOpen,
+            setActiveTutorMcq,
+            chatMessages,
+            bankQuestions: questions,
+            userProgress: {
+              accuracy: userProgress.accuracy,
+              weakAreas: userProgress.weakAreas,
+              level: userProgress.level,
+            },
+          },
+          note
+        );
+      } finally {
+        tutorBusyRef.current = false;
+        setTutorPushBusy(false);
+      }
+    },
+    [
+      questionsLoading,
+      questionsError,
+      addChatMessage,
+      setChatOpen,
+      setActiveTutorMcq,
+      chatMessages,
+      questions,
+      userProgress.accuracy,
+      userProgress.weakAreas,
+      userProgress.level,
+    ]
+  );
 
   useEffect(() => {
     if (questionsLoading) {
@@ -501,6 +556,8 @@ export function MistakesTest() {
 
   const leaveSlot = useCallback(
     async (idx: number) => {
+      pendingBankHintNextRef.current = null;
+      setBankHintAwaitNext(false);
       setBankHint(null);
       setSimilarQ(null);
       setSimilarShowReveal(false);
@@ -520,6 +577,8 @@ export function MistakesTest() {
 
   const loadSimilarAfterHard = async (_tier: AssessmentTier) => {
     if (!bankQ) return;
+    pendingBankHintNextRef.current = null;
+    setBankHintAwaitNext(false);
     setLoadingSimilar(true);
     try {
       const similar = await generateSimilarQuestion(
@@ -625,8 +684,8 @@ export function MistakesTest() {
         setIsCorrect(true);
         setShowResult(true);
         await recordAndInsert('medium_wrong', bankQ, tier);
-        await feedbackDelay(FEEDBACK_DELAY_MS);
-        await leaveSlot(currentIndex);
+        pendingBankHintNextRef.current = { kind: 'leave' };
+        setBankHintAwaitNext(true);
         return;
       }
 
@@ -635,8 +694,8 @@ export function MistakesTest() {
       setIsCorrect(false);
       setShowResult(true);
       await recordAndInsert('hard_wrong', bankQ, tier);
-      await feedbackDelay(FEEDBACK_DELAY_MS);
-      await loadSimilarAfterHard(tier);
+      pendingBankHintNextRef.current = { kind: 'similar', tier };
+      setBankHintAwaitNext(true);
     } finally {
       submitBusyRef.current = false;
     }
@@ -658,6 +717,24 @@ export function MistakesTest() {
 
   const handleNextAfterSimilarWrong = async () => {
     await leaveSlot(currentIndex);
+  };
+
+  const handleNextAfterBankHintRound = async () => {
+    if (submitBusyRef.current) return;
+    const p = pendingBankHintNextRef.current;
+    if (!p) return;
+    submitBusyRef.current = true;
+    pendingBankHintNextRef.current = null;
+    setBankHintAwaitNext(false);
+    try {
+      if (p.kind === 'leave') {
+        await leaveSlot(currentIndex);
+      } else {
+        await loadSimilarAfterHard(p.tier);
+      }
+    } finally {
+      submitBusyRef.current = false;
+    }
   };
 
   const goBack = () => {
@@ -710,6 +787,7 @@ export function MistakesTest() {
     similarShowReveal ||
     loadingSimilar ||
     loadingHint ||
+    bankHintAwaitNext ||
     (showResult && isCorrect);
 
   if (questionsLoading || loadingQueue) {
@@ -887,6 +965,24 @@ export function MistakesTest() {
                   <div className="mb-6 p-4 rounded-xl border border-border bg-muted/30 text-sm">
                     <p className="font-medium mb-1">Explanation</p>
                     <p className="text-muted-foreground">{bankQ.explanation}</p>
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={tutorPushBusy}
+                        onClick={() =>
+                          void runMistakesTutorPush(
+                            bankQ,
+                            'Stage 2.5 mistakes test · bank question · after hint round.'
+                          )
+                        }
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        Add to chat
+                      </Button>
+                    </div>
                   </div>
                 )}
 
@@ -894,6 +990,24 @@ export function MistakesTest() {
                 <div className="mb-6 p-4 rounded-xl border border-border bg-muted/30 text-sm">
                   <p className="font-medium mb-1">Explanation</p>
                   <p className="text-muted-foreground">{similarQ.explanation}</p>
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="gap-2"
+                      disabled={tutorPushBusy}
+                      onClick={() =>
+                        void runMistakesTutorPush(
+                          similarQ,
+                          'Stage 2.5 mistakes test · similar (harder) question after wrong on follow-up.'
+                        )
+                      }
+                    >
+                      <MessageCircle className="w-4 h-4" />
+                      Add to chat
+                    </Button>
+                  </div>
                 </div>
               )}
 
@@ -905,7 +1019,16 @@ export function MistakesTest() {
                   </Button>
                 )}
 
-                {!similarShowReveal && !loadingSimilar && (
+                {bankHintAwaitNext && !similarQ && (
+                  <Button onClick={() => void handleNextAfterBankHintRound()} className="gap-2">
+                    {pendingBankHintNextRef.current?.kind === 'leave' && currentIndex >= banks.length - 1
+                      ? 'View results'
+                      : 'Next question'}
+                    <ChevronRight className="w-4 h-4" />
+                  </Button>
+                )}
+
+                {!similarShowReveal && !bankHintAwaitNext && !loadingSimilar && (
                   <Button
                     onClick={() => void handleSubmit()}
                     disabled={selectedOption === null || loadingHint || loadingSimilar}
